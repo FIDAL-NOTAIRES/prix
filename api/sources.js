@@ -89,32 +89,74 @@ async function ventes(insee, annee, lat, lon, rayon) {
   return { annee, ventes: out, mutations: mut.size, ecartees: multi };
 }
 
-async function pointsInteret(lat, lon, rayon) {
+/* Commerces, équipements et transports.
+   Source principale : la BD TOPO de l'IGN, sur la même infrastructure publique que
+   le cadastre, qui répond de façon fiable. Secours : les serveurs communautaires
+   OpenStreetMap, gratuits mais fréquemment saturés. */
+async function viaIgn(lat, lon, rayon) {
+  const dLa = rayon / 111000, dLo = rayon / (111000 * Math.cos(lat * Math.PI / 180));
+  const bbox = [lat - dLa, lon - dLo, lat + dLa, lon + dLo].join(',') + ',EPSG:4326';
+  const couches = ['BDTOPO_V3:zone_d_activite_ou_d_interet', 'BDTOPO_V3:equipement_de_transport'];
+  let total = 0, lues = 0, detail = {};
+  for (const c of couches) {
+    const u = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature'
+      + '&outputFormat=application/json&count=1&SRSNAME=EPSG:4326&TYPENAMES=' + encodeURIComponent(c)
+      + '&BBOX=' + encodeURIComponent(bbox);
+    try {
+      const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
+      if (!rep.ok) continue;
+      const d = await rep.json();
+      const n = d.numberMatched !== undefined ? +d.numberMatched
+              : (d.totalFeatures !== undefined ? +d.totalFeatures : (d.features || []).length);
+      if (!isFinite(n)) continue;
+      total += n; lues++; detail[c.split(':')[1]] = n;
+    } catch (e) { /* on passe à la couche suivante */ }
+  }
+  if (!lues) throw new Error('BD TOPO sans réponse exploitable');
+  return { n: total, source: 'BD TOPO (IGN)', detail };
+}
+
+async function viaOsm(lat, lon, rayon) {
   const c = `${lat},${lon}`;
-  const req = '[out:json][timeout:25];('
+  const req = '[out:json][timeout:20];('
     + `nwr(around:${rayon},${c})[shop];`
     + `nwr(around:${rayon},${c})[amenity~"^(school|pharmacy|supermarket|bakery)$"];`
     + `nwr(around:${rayon},${c})[public_transport=station];`
     + `nwr(around:${rayon},${c})[highway=bus_stop];`
-    + ');out ids;';
+    + ');out count;';                     /* on ne demande que le compte, pas la liste */
   const miroirs = [
     'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter'
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter'
   ];
   const echecs = [];
   for (const m of miroirs) {
-    try {
-      const rep = await fetch(m + '?data=' + encodeURIComponent(req), {
-        headers: { 'user-agent': 'PRIX-FIDAL-Notaires' }
-      });
-      if (!rep.ok) { echecs.push(`${new URL(m).hostname} : HTTP ${rep.status}`); continue; }
-      const d = await rep.json();
-      return { n: (d.elements || []).length, source: new URL(m).hostname };
-    } catch (e) {
-      echecs.push(`${new URL(m).hostname} : ${e.message}`);
+    for (let essai = 1; essai <= 2; essai++) {
+      try {
+        const rep = await fetch(m + '?data=' + encodeURIComponent(req), {
+          headers: { 'user-agent': 'PRIX-FIDAL-Notaires' }
+        });
+        if (!rep.ok) { echecs.push(`${new URL(m).hostname} : HTTP ${rep.status}`); break; }
+        const d = await rep.json();
+        const t = (d.elements || [])[0];
+        const n = t && t.tags ? (+t.tags.total || +t.tags.nodes + +t.tags.ways + +t.tags.relations || 0)
+                              : (d.elements || []).length;
+        return { n: n, source: new URL(m).hostname };
+      } catch (e) {
+        echecs.push(`${new URL(m).hostname} : ${e.message}`);
+        if (essai === 1) await new Promise(r => setTimeout(r, 800));
+      }
     }
   }
   throw new Error(echecs.join(' — '));
+}
+
+async function pointsInteret(lat, lon, rayon) {
+  try { return await viaIgn(lat, lon, rayon); }
+  catch (e1) {
+    try { return await viaOsm(lat, lon, rayon); }
+    catch (e2) { throw new Error('IGN : ' + e1.message + ' — OSM : ' + e2.message); }
+  }
 }
 
 export default async function handler(req, res) {
@@ -134,6 +176,7 @@ export default async function handler(req, res) {
       return res.status(200).json(d);
     }
     if (type === 'poi') {
+      res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate=2592000');
       const d = await pointsInteret(+q.lat, +q.lon, +(q.r || 600));
       return res.status(200).json(d);
     }
