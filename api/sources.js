@@ -42,31 +42,51 @@ async function ventes(insee, annee, lat, lon, rayon) {
   const lignes = txt.split('\n');
   const ent = lignes[0].split(',');
   const i = (n) => ent.indexOf(n);
-  const iVf = i('valeur_fonciere'), iSb = i('surface_reelle_bati'), iTl = i('type_local'),
-        iVo = i('adresse_nom_voie'), iLa = i('latitude'), iLo = i('longitude'), iDt = i('date_mutation'),
-        iSt = i('surface_terrain'), iPi = i('nombre_pieces_principales');
-  if (iVf < 0 || iSb < 0 || iTl < 0) return { annee, erreur: 'colonnes inattendues', ventes: [] };
+  const iId = i('id_mutation'), iVf = i('valeur_fonciere'), iSb = i('surface_reelle_bati'),
+        iTl = i('type_local'), iVo = i('adresse_nom_voie'), iLa = i('latitude'), iLo = i('longitude'),
+        iDt = i('date_mutation'), iNa = i('nature_mutation'), iSt = i('surface_terrain'),
+        iPi = i('nombre_pieces_principales');
+  if (iId < 0 || iVf < 0 || iSb < 0 || iTl < 0) return { annee, erreur: 'colonnes inattendues', ventes: [] };
 
-  const out = [];
+  /* Regroupement par mutation : le fichier compte une ligne par lot ou par parcelle,
+     et chaque ligne reporte le prix TOTAL de la vente. Diviser ce prix par la surface
+     d'une seule ligne surestimerait le prix au m². */
+  const mut = new Map();
   for (let k = 1; k < lignes.length; k++) {
     const l = lignes[k];
     if (!l) continue;
     const c = l.indexOf('"') < 0 ? l.split(',') : decoupe(l);
-    const vf = +c[iVf], sb = +c[iSb];
-    if (!vf || !sb || vf < 10000 || sb < 9) continue;
-    const la = +c[iLa], lo = +c[iLo];
-    if (distM(la, lo, +lat, +lon) > +rayon) continue;
-    out.push({
-      vf, sb,
-      tl: c[iTl] || '',
-      voie: (iVo >= 0 ? c[iVo] : '') || '',
-      st: iSt >= 0 ? +c[iSt] || 0 : 0,
-      pi: iPi >= 0 ? +c[iPi] || 0 : 0,
-      lat: la, lon: lo,
-      an: iDt >= 0 ? c[iDt] : String(annee)
-    });
+    const id = c[iId];
+    if (!id) continue;
+    const vf = +c[iVf];
+    if (!vf || vf < 10000) continue;
+    if (iNa >= 0 && c[iNa] && c[iNa] !== 'Vente') continue;   /* on écarte échanges, VEFA, adjudications */
+
+    let m = mut.get(id);
+    if (!m) { m = { vf, locaux: [], terrain: 0, voie: '', lat: NaN, lon: NaN, an: iDt >= 0 ? c[iDt] : String(annee) }; mut.set(id, m); }
+    const tl = c[iTl] || '';
+    const sb = +c[iSb] || 0;
+    if (tl && sb > 0) {
+      m.locaux.push({ tl, sb, pi: iPi >= 0 ? +c[iPi] || 0 : 0 });
+      if (iVo >= 0 && !m.voie) m.voie = c[iVo] || '';
+      if (iLa >= 0 && !isFinite(m.lat)) { m.lat = +c[iLa]; m.lon = +c[iLo]; }
+    } else if (iSt >= 0) {
+      m.terrain += +c[iSt] || 0;
+    }
   }
-  return { annee, ventes: out };
+
+  const out = [];
+  let multi = 0;
+  for (const m of mut.values()) {
+    if (m.locaux.length === 0) continue;                       /* terrain nu */
+    const bati = m.locaux.filter(x => x.tl === 'Maison' || x.tl === 'Appartement');
+    if (bati.length !== 1) { multi++; continue; }               /* vente multi-lots : non interprétable */
+    const p = bati[0];
+    if (p.sb < 9) continue;
+    if (distM(m.lat, m.lon, +lat, +lon) > +rayon) continue;
+    out.push({ vf: m.vf, sb: p.sb, tl: p.tl, pi: p.pi, voie: m.voie, st: m.terrain, lat: m.lat, lon: m.lon, an: m.an });
+  }
+  return { annee, ventes: out, mutations: mut.size, ecartees: multi };
 }
 
 async function pointsInteret(lat, lon, rayon) {
