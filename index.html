@@ -149,8 +149,16 @@ footer{padding:16px 22px;color:var(--doux);font-size:12px;text-align:center}
       <div><label class="f" for="pm2">Prix médian au m² (€)</label><input type="number" id="pm2" value="3000" step="10"></div>
       <div><label class="f" for="meth">Méthode de cumul</label>
         <select id="meth">
-          <option value="mult">Multiplicative (recommandée)</option>
+          <option value="degr">Dégressive (recommandée)</option>
+          <option value="mult">Multiplicative</option>
           <option value="add">Additive</option>
+        </select>
+      </div>
+      <div><label class="f" for="intens">Intensité des facteurs</label>
+        <select id="intens">
+          <option value="0.5">Prudente — la moitié des barèmes</option>
+          <option value="0.75">Mesurée — trois quarts</option>
+          <option value="1">Pleine — barèmes de la grille</option>
         </select>
       </div>
     </div>
@@ -608,25 +616,41 @@ function rendre(){
   const pm2 = +document.getElementById('pm2').value||0;
   const surf = +document.getElementById('surf').value||0;
   const ref = pm2*surf;
-  let sp=0, sm=0, mult=1;
-  const retenus=[];
+  const meth0 = document.getElementById('meth').value;
+  const k = +document.getElementById('intens').value||1;
+  /* poids dégressifs : le facteur le plus lourd compte plein, les suivants de moins
+     en moins, parce que chaque ligne est calibrée toutes choses égales par ailleurs
+     et que les empiler compterait plusieurs fois le même défaut. */
+  const POIDS = [1, 0.8, 0.65, 0.5, 0.4, 0.3, 0.25, 0.2];
+  const brutsP = [], brutsM = [], retenus = [];
   ['plus','moins'].forEach(g=>{
     FACTEURS[S.type][g].forEach((x,i)=>{
       const niv = S.sel[key(g,i)]||0;
       if(!niv) return;
-      const v = valeurNiveau(x, niv);
-      if(v>0) sp+=v; else sm+=v;
-      mult *= (1+v);
-      retenus.push({l:x.l, v:v, a:x.a, s:x.s, n:NIVEAUX[niv]});
+      const v = valeurNiveau(x, niv)*k;
+      (v>0?brutsP:brutsM).push({l:x.l, v:v, a:x.a, s:x.s, n:NIVEAUX[niv]});
     });
   });
+  const ponderer = (arr) => {
+    arr.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));
+    return arr.map((o,j)=>{
+      const p = meth0==='degr' ? (POIDS[j]!==undefined?POIDS[j]:0.15) : 1;
+      const w = o.v*p;
+      retenus.push(Object.assign({}, o, {v:w, brut:o.v, poids:p}));
+      return w;
+    });
+  };
+  const vp = ponderer(brutsP), vm = ponderer(brutsM);
+  let sp=0, sm=0, mult=1;
+  vp.forEach(v=>{ sp+=v; mult*=(1+v); });
+  vm.forEach(v=>{ sm+=v; mult*=(1+v); });
   const soldeBrut = sp+sm;
   const solde = Math.max(-0.35, Math.min(0.35, soldeBrut));
   const multBrut = mult-1;
   const multPlaf = Math.max(-0.35, Math.min(0.35, multBrut));
   const add = ref*(1+solde);
   const mu = ref*(1+multPlaf);
-  const meth = document.getElementById('meth').value;
+  const meth = meth0==='add' ? 'add' : 'mult';
   const principal = meth==='mult'?mu:add;
   const autre = meth==='mult'?add:mu;
 
@@ -655,7 +679,7 @@ function rendre(){
     + document.getElementById('adr').value + '\n'
     + 'Valeur de référence : '+euro(ref)+'  ('+pm2.toLocaleString('fr-FR')+' €/m² × '+surf+' m²)\n'
     + 'Valeur retenue : '+euro(principal)+'   (écart '+euro(principal-ref)+', soit '+pct(e)+')\n\n'
-    + retenus.map(r=>'• '+r.l+'  ['+r.n+' — '+pct(r.v)+']\n   '+r.a+'\n   Source : '+r.s).join('\n\n')
+    + retenus.map(r=>'• '+r.l+'  ['+r.n+' — '+pct(r.v)+(r.poids<1?(' ; barème '+pct(r.brut)+' pondéré à '+Math.round(r.poids*100)+' %'):'')+']\n   '+r.a+'\n   Source : '+r.s).join('\n\n')
     + ((S.notes||[]).length ? '\n\nCONSTATATIONS DES BASES PUBLIQUES\n• '+S.notes.join('\n• ') : '');
   document.getElementById('args').textContent = t;
 }
@@ -708,7 +732,7 @@ document.getElementById('raz').onclick = ()=>{
   document.getElementById('etat').value='libre';
   initStatuts(); sauver(); construire(); rendre();
 };
-['pm2','surf','meth'].forEach(id=>document.getElementById(id).addEventListener('input', rendre));
+['pm2','surf','meth','intens'].forEach(id=>document.getElementById(id).addEventListener('input', rendre));
 document.getElementById('etat').addEventListener('change', appliquerEtat);
 ['filtre','vue'].forEach(id=>document.getElementById(id).addEventListener('input', construire));
 document.getElementById('copier').onclick = async ()=>{
