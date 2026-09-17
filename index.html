@@ -379,27 +379,25 @@ async function interroger(){
   const sRef = +document.getElementById('surf').value||0;
   try{
     if(!S.codeInsee) throw Object.assign(new Error('x'),{code:'code commune inconnu'});
-    const dep = S.codeInsee.startsWith('97') ? S.codeInsee.slice(0,3) : S.codeInsee.slice(0,2);
     const anneeH = new Date().getFullYear()-1;
     const annees = [anneeH, anneeH-1, anneeH-2, anneeH-3, anneeH-4];
     let brut = [], lues = [], erreurs = [];
     for(const a of annees){
       if(brut.length>400) break;
-      const url = 'https://files.data.gouv.fr/geo-dvf/latest/csv/'+a+'/communes/'+dep+'/'+S.codeInsee+'.csv';
       try{
-        const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 30000);
-        const rep = await fetch(url, {signal:ctl.signal}); clearTimeout(t);
-        if(!rep.ok){ erreurs.push(a+' : HTTP '+rep.status); continue; }
-        const txt = await rep.text();
-        brut = brut.concat(lireCsvDvf(txt, a));
+        const d = await jget('/api/sources?type=dvf&insee='+S.codeInsee+'&annee='+a
+                             +'&lat='+S.coords.lat+'&lon='+S.coords.lon+'&r=700', 30000);
+        if(d.erreur) { erreurs.push(a+' : '+d.erreur); continue; }
+        if(d.absent) { erreurs.push(a+' : fichier non publié'); continue; }
+        brut = brut.concat(d.ventes||[]);
         lues.push(a);
-        statut('dvf','', 'lecture des ventes '+lues.join(', ')+'…');
-      }catch(err){ erreurs.push(a+' : '+(err.name==='AbortError'?'délai dépassé':'appel refusé')); }
+        statut('dvf','', 'lecture des ventes '+lues.slice().sort().join(', ')+'…');
+      }catch(err){ erreurs.push(a+' : '+(err.code||err.message)); }
     }
-    if(!lues.length) throw Object.assign(new Error('x'),{detail:'fichiers Etalab injoignables ('+erreurs.join(', ')+')'});
+    if(!lues.length) throw Object.assign(new Error('x'),{detail:'relais indisponible ('+erreurs.join(', ')+')'});
 
     const cible = S.type==='maison'?'Maison':'Appartement';
-    const dansRayon = brut.filter(x=>x.tl===cible && x.vf>10000 && x.sb>9 && distM(x.lat,x.lon,S.coords.lat,S.coords.lon)<=700);
+    const dansRayon = brut.filter(x=>x.tl===cible);
     const proche = x => !sRef || (x.sb>=sRef*0.6 && x.sb<=sRef*1.6);
     const restreint = dansRayon.filter(proche);
     const cibleOk = restreint.length>=5;
@@ -473,17 +471,9 @@ async function interroger(){
   /* 6 — Commerces et transports */
   statut('poi','','interrogation…');
   try{
-    const c = S.coords.lat+','+S.coords.lon;
-    const req = '[out:json][timeout:25];('
-      + 'nwr(around:600,'+c+')[shop];'
-      + 'nwr(around:600,'+c+')[amenity~"^(school|pharmacy|supermarket|bakery)$"];'
-      + 'nwr(around:600,'+c+')[public_transport=station];'
-      + 'nwr(around:600,'+c+')[highway=bus_stop];);out ids;';
-    const r = await jfirst([
-      'https://overpass-api.de/api/interpreter?data='+encodeURIComponent(req),
-      'https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(req)
-    ], 25000);
-    const n = (r.d.elements||[]).length;
+    const d = await jget('/api/sources?type=poi&lat='+S.coords.lat+'&lon='+S.coords.lon+'&r=600', 30000);
+    if(d.erreur) throw Object.assign(new Error('x'),{detail:d.erreur});
+    const n = d.n||0;
     statut('poi','ok', n+' commerces, écoles ou arrêts dans un rayon de 600 m');
     noter(n+" commerces, écoles ou points d'arrêt recensés dans un rayon de 600 m.");
     preremplir('proximite', n>=15);
