@@ -416,6 +416,7 @@ async function interroger(){
         + Math.round(jeu[Math.floor(jeu.length*0.75)]).toLocaleString('fr-FR')+' €/m².';
       statut('dvf','ok', jeu.length+' ventes retenues, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² (fichiers Etalab '+lues.slice().sort().join(', ')+')');
       noter(jeu.length+' ventes comparables retenues dans un rayon de 700 m, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² (une ligne par mutation ; '+ecartees+' ventes multi-lots écartées comme non interprétables).');
+      if(erreurs.length) noter('Millésimes non exploités : '+erreurs.join(' ; ')+'.');
       if(jeu.length<6){ preremplir('rarete', true); noter('Moins de six comparables : ligne « rareté du produit » proposée.'); }
       const voie = (q.toLowerCase().replace(/^[0-9a-z]*\s+/,'').split(',')[0]||'').replace(/\s+\d{5}.*$/,'').trim().slice(0,12);
       const rue = dansRayon.filter(x=>voie && x.voie.toLowerCase().includes(voie)).map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
