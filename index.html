@@ -244,10 +244,14 @@ async function jget(url, ms=12000){
   } finally { clearTimeout(t); }
 }
 /* essaie plusieurs points d'entrée et renvoie le premier qui répond */
-async function jfirst(urls, ms){
+async function jfirst(urls, ms, valide){
   const errs = [];
   for(const u of urls){
-    try{ const d = await jget(u, ms); return {d:d, u:u}; }
+    try{
+      const d = await jget(u, ms);
+      if(valide && !valide(d)){ errs.push(new URL(u).hostname+' : réponse vide'); continue; }
+      return {d:d, u:u};
+    }
     catch(e){ errs.push(new URL(u).hostname+' : '+(e.code||e.message)); }
   }
   const e = new Error('toutes injoignables'); e.detail = errs.join(' — '); throw e;
@@ -308,12 +312,13 @@ document.getElementById('adr').addEventListener('input', e=>{
       const d = await jget('https://api-adresse.data.gouv.fr/search/?limit=5&q='+encodeURIComponent(q), 6000);
       const box = document.getElementById('sugg');
       if(!d.features || !d.features.length){ box.style.display='none'; return; }
-      box.innerHTML = d.features.map(f=>'<div data-lon="'+f.geometry.coordinates[0]+'" data-lat="'+f.geometry.coordinates[1]+'" data-ville="'+(f.properties.city||'')+'">'+f.properties.label+'</div>').join('');
+      box.innerHTML = d.features.map(f=>'<div data-lon="'+f.geometry.coordinates[0]+'" data-lat="'+f.geometry.coordinates[1]+'" data-ville="'+(f.properties.city||'')+'" data-insee="'+(f.properties.citycode||'')+'">'+f.properties.label+'</div>').join('');
       box.style.display='block';
       box.querySelectorAll('div').forEach(el=>el.onclick=()=>{
         document.getElementById('adr').value = el.textContent;
         S.coords = {lat:+el.dataset.lat, lon:+el.dataset.lon};
         S.ville = el.dataset.ville;
+        S.codeInsee = el.dataset.insee||'';
         box.style.display='none';
       });
     }catch(_){ document.getElementById('sugg').style.display='none'; }
@@ -328,7 +333,7 @@ async function interroger(){
 
   /* 1 — Base adresse nationale */
   statut('ban','','interrogation…');
-  if(!S.coords){
+  if(!S.coords || !S.codeInsee){
     try{
       const d = await jget('https://api-adresse.data.gouv.fr/search/?limit=1&q='+encodeURIComponent(q));
       if(d.features && d.features.length){
@@ -346,14 +351,17 @@ async function interroger(){
   statut('cad','','interrogation…');
   try{
     const geo = encodeURIComponent(JSON.stringify({type:'Point',coordinates:[S.coords.lon,S.coords.lat]}));
-    const wfs = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&outputFormat=application/json&count=1'
-      + '&TYPENAMES=CADASTRALPARCELS.PARCELLAIRE_EXPRESS:parcelle'
-      + '&CQL_FILTER=' + encodeURIComponent("INTERSECTS(geom,POINT("+S.coords.lon+" "+S.coords.lat+"))");
+    const d = 0.00035;
+    const wfs = (cql) => 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&outputFormat=application/json&count=1'
+      + '&TYPENAMES=CADASTRALPARCELS.PARCELLAIRE_EXPRESS:parcelle&SRSNAME=EPSG:4326&' + cql;
     const r = await jfirst([
-      wfs,
+      wfs('BBOX='+(S.coords.lat-d)+','+(S.coords.lon-d)+','+(S.coords.lat+d)+','+(S.coords.lon+d)+',EPSG:4326'),
+      wfs('BBOX='+(S.coords.lon-d)+','+(S.coords.lat-d)+','+(S.coords.lon+d)+','+(S.coords.lat+d)+',EPSG:4326'),
+      wfs('CQL_FILTER='+encodeURIComponent("INTERSECTS(geom,POINT("+S.coords.lat+" "+S.coords.lon+"))")),
+      wfs('CQL_FILTER='+encodeURIComponent("INTERSECTS(geom,POINT("+S.coords.lon+" "+S.coords.lat+"))")),
       'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo,
       'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo+'&source_ign=PCI'
-    ], 20000);
+    ], 20000, x => ((x.features||[]).length>0));
     const p = (r.d.features||[])[0];
     if(p){
       const pr = p.properties||{};
