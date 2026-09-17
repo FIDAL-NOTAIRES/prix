@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F2238">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PRIX">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%230F2238'/%3E%3Ctext x='90' y='118' font-family='Georgia,serif' font-size='64' fill='%236DD5DC' text-anchor='middle'%3EPRIX%3C/text%3E%3C/svg%3E">
+<title>PRIX — estimation et négociation de la valeur vénale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<style>
+:root{
+  --nuit:#0F2238; --canard:#33838B; --orange:#FF982D; --carmin:#A01040;
+  --cyan:#6DD5DC; --jaune:#FFE764; --jauneTexte:#FFC900;
+  --fond:#F5F7F9; --carte:#FFFFFF; --texte:#0F2238; --doux:#5B6B7C;
+  --trait:#D8E0E7; --auto:#E2F0D9; --semi:#FFF2CC; --manuel:#ECEFF2;
+  --autoT:#2F6B2F; --semiT:#8A5A00; --manuelT:#5B6B7C;
+  --titre:Georgia,"Times New Roman",serif;
+  --corps:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --fond:#0B1622; --carte:#14202E; --texte:#E8EEF4; --doux:#9BAABA;
+    --trait:#26374A; --auto:#1E3524; --semi:#3A2E12; --manuel:#1D2836;
+    --autoT:#9BD4A0; --semiT:#F0C674; --manuelT:#9BAABA;
+  }
+}
+:root[data-theme="dark"]{
+  --fond:#0B1622; --carte:#14202E; --texte:#E8EEF4; --doux:#9BAABA;
+  --trait:#26374A; --auto:#1E3524; --semi:#3A2E12; --manuel:#1D2836;
+  --autoT:#9BD4A0; --semiT:#F0C674; --manuelT:#9BAABA;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fond);color:var(--texte);font-family:var(--corps);font-size:15px;line-height:1.5}
+header{background:var(--nuit);color:#fff;padding:18px 22px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{font-family:var(--titre);font-size:26px;margin:0;letter-spacing:.5px}
+header .st{color:var(--cyan);font-size:13px}
+.wrap{max-width:1500px;margin:0 auto;padding:18px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;align-items:start}
+@media(max-width:1080px){.wrap{grid-template-columns:1fr}}
+.carte{background:var(--carte);border:1px solid var(--trait);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+.carte h2{font-family:var(--titre);font-size:18px;margin:0 0 4px;color:var(--canard)}
+.carte .sous{color:var(--doux);font-size:13px;margin:0 0 14px}
+label.f{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--doux);margin-bottom:4px}
+input[type=text],input[type=number],select{width:100%;padding:9px 10px;border:1px solid var(--trait);border-radius:7px;background:var(--carte);color:var(--texte);font-family:var(--corps);font-size:15px}
+input:focus,select:focus{outline:2px solid var(--canard);outline-offset:-1px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:620px){.grid3,.grid2{grid-template-columns:1fr}}
+button{font-family:var(--corps);cursor:pointer}
+.btn{background:var(--canard);color:#fff;border:0;border-radius:7px;padding:10px 16px;font-size:14px;font-weight:600}
+.btn:hover{background:#2b6d74}
+.btn.sec{background:transparent;color:var(--canard);border:1px solid var(--canard)}
+.btn.sec:hover{background:rgba(51,131,139,.1)}
+.seg{display:flex;border:1px solid var(--trait);border-radius:7px;overflow:hidden}
+.seg button{flex:1;border:0;background:transparent;color:var(--doux);padding:6px 4px;font-size:12px;border-right:1px solid var(--trait)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--canard);color:#fff;font-weight:600}
+.seg.neg button.on{background:var(--carmin)}
+.typ{display:flex;gap:8px;margin-bottom:14px}
+.typ button{flex:1;padding:12px;border:1px solid var(--trait);background:var(--carte);color:var(--doux);border-radius:8px;font-size:15px}
+.typ button.on{background:var(--nuit);color:#fff;border-color:var(--nuit);font-weight:600}
+.bandeau{background:var(--semi);color:var(--semiT);border:1px solid var(--trait);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:14px;display:none}
+.bandeau.on{display:block}
+.src{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:20px;white-space:nowrap}
+.src.auto{background:var(--auto);color:var(--autoT)}
+.src.semi{background:var(--semi);color:var(--semiT)}
+.src.manuel{background:var(--manuel);color:var(--manuelT)}
+.fac{display:grid;grid-template-columns:minmax(0,1fr) 210px 64px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--trait)}
+@media(max-width:760px){.fac{grid-template-columns:1fr;gap:6px}}
+.fac:last-child{border-bottom:0}
+.fac .nom{font-size:14px}
+.fac .meta{display:flex;gap:7px;align-items:center;margin-top:3px;flex-wrap:wrap}
+.fac .pre{font-size:10.5px;padding:2px 7px;border-radius:20px;background:var(--cyan);color:var(--nuit);font-weight:600}
+.fac .val{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}
+.fac.act{background:rgba(51,131,139,.06)}
+.fac .arg{font-size:12.5px;color:var(--doux);margin-top:5px;display:none}
+.fac.act .arg{display:block}
+details>summary{cursor:pointer;font-family:var(--titre);font-size:17px;color:var(--canard);padding:6px 0;list-style:none}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"▸ ";color:var(--orange)}
+details[open]>summary::before{content:"▾ "}
+.cpt{font-family:var(--corps);font-size:12px;color:var(--doux);font-weight:400;margin-left:8px}
+.res{position:sticky;top:18px}
+.res .big{font-family:var(--titre);font-size:32px;color:var(--canard);margin:2px 0 0;font-variant-numeric:tabular-nums}
+.res .four{font-size:14px;color:var(--doux);margin:2px 0 14px}
+.ligne{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--trait);font-size:13.5px}
+.ligne span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+.pos{color:var(--canard)} .neg{color:var(--carmin)}
+.jauge{height:10px;border-radius:5px;background:var(--trait);position:relative;margin:12px 0 4px;overflow:hidden}
+.jauge i{position:absolute;top:0;bottom:0;background:var(--canard)}
+.jauge i.n{background:var(--carmin)}
+.mini{font-size:11.5px;color:var(--doux)}
+.stat{font-size:12px;padding:3px 0;color:var(--doux)}
+.stat b{font-weight:600}
+.ok{color:var(--autoT)} .ko{color:var(--carmin)}
+.sugg{position:absolute;z-index:40;background:var(--carte);border:1px solid var(--trait);border-radius:8px;width:100%;max-height:230px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.sugg div{padding:8px 10px;font-size:13.5px;cursor:pointer;border-bottom:1px solid var(--trait)}
+.sugg div:hover{background:rgba(51,131,139,.12)}
+.rel{position:relative}
+.args{font-size:13px;white-space:pre-wrap;background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:12px;max-height:340px;overflow:auto;margin-top:10px}
+footer{padding:16px 22px;color:var(--doux);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>PRIX</h1>
+  <span class="st">Estimation de la valeur vénale et argumentaire de négociation — FIDAL Notaires</span>
+</header>
+
+<div class="wrap">
+<div>
+
+  <div class="carte">
+    <h2>1. Le bien</h2>
+    <p class="sous">Saisir l'adresse puis interroger les bases publiques pour préremplir ce qui peut l'être.</p>
+    <div class="typ">
+      <button id="tMaison" class="on">Maison individuelle</button>
+      <button id="tAppart">Appartement / copropriété</button>
+    </div>
+    <div class="rel" style="margin-bottom:12px">
+      <label class="f" for="adr">Adresse du bien</label>
+      <input type="text" id="adr" placeholder="12 rue de la Paix, 75002 Paris" autocomplete="off">
+      <div id="sugg" class="sugg" style="display:none"></div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div><label class="f" for="surf">Surface pondérée (m²)</label><input type="number" id="surf" value="100" step="1"></div>
+      <div><label class="f" for="etat">Bien libre ou occupé</label>
+        <select id="etat">
+          <option value="libre">Libre de toute occupation</option>
+          <option value="occupe">Occupé (bail en cours)</option>
+          <option value="nc">Non renseigné</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" id="go">Interroger les bases publiques</button>
+    <button class="btn sec" id="raz">Réinitialiser</button>
+    <div id="statuts" style="margin-top:12px"></div>
+    <div class="bandeau" id="bandeau"></div>
+    <div class="args" id="carnet" style="display:none"></div>
+  </div>
+
+  <div class="carte">
+    <h2>2. La valeur de référence</h2>
+    <p class="sous">Le prix médian est proposé par les ventes réellement enregistrées (DVF) ; il reste modifiable.</p>
+    <div class="grid2">
+      <div><label class="f" for="pm2">Prix médian au m² (€)</label><input type="number" id="pm2" value="3000" step="10"></div>
+      <div><label class="f" for="meth">Méthode de cumul</label>
+        <select id="meth">
+          <option value="mult">Multiplicative (recommandée)</option>
+          <option value="add">Additive</option>
+        </select>
+      </div>
+    </div>
+    <div class="mini" id="dvfInfo" style="margin-top:10px"></div>
+  </div>
+
+  <div class="carte">
+    <h2>3. Le questionnaire</h2>
+    <p class="sous">Pour chaque ligne : sans objet, léger, marqué ou fort. L'argumentaire apparaît dès qu'une ligne est retenue.</p>
+    <div class="grid2" style="margin-bottom:12px">
+      <div><label class="f" for="filtre">Filtrer les facteurs</label><input type="text" id="filtre" placeholder="énergie, terrain, bail…"></div>
+      <div><label class="f" for="vue">Affichage</label>
+        <select id="vue">
+          <option value="tout">Tous les facteurs</option>
+          <option value="retenus">Seulement les lignes retenues</option>
+          <option value="auto">Seulement les lignes préremplissables</option>
+        </select>
+      </div>
+    </div>
+    <div id="listes"></div>
+  </div>
+
+</div>
+
+<div>
+  <div class="carte res">
+    <h2>Résultat</h2>
+    <div class="mini" id="refTxt"></div>
+    <p class="big" id="valeur">—</p>
+    <p class="four" id="fourchette"></p>
+    <div class="jauge"><i id="jaugeI" style="left:50%;width:0"></i></div>
+    <div class="mini" style="display:flex;justify-content:space-between"><span>−35 %</span><span>0</span><span>+35 %</span></div>
+    <div style="margin-top:14px">
+      <div class="ligne"><span>Valeur de référence</span><span id="lRef">—</span></div>
+      <div class="ligne"><span>Facteurs valorisants</span><span class="pos" id="lPlus">—</span></div>
+      <div class="ligne"><span>Facteurs dévalorisants</span><span class="neg" id="lMoins">—</span></div>
+      <div class="ligne"><span>Solde appliqué</span><span id="lSolde">—</span></div>
+      <div class="ligne"><span>Écart en euros</span><span id="lEcart">—</span></div>
+      <div class="ligne"><span>Autre méthode</span><span id="lAutre">—</span></div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn" id="copier">Copier l'argumentaire</button>
+      <button class="btn sec" id="imprimer">Imprimer</button>
+    </div>
+    <div class="args" id="args">Aucun facteur retenu pour l'instant.</div>
+  </div>
+</div>
+</div>
+
+<footer>PRIX — phase 1 (valeur de référence DVF) et phase 2 (facteurs d'ajustement). Sources : DVF, cadastre, BDNB, BAN, ADEME, Géorisques. Outil d'aide à la décision, il ne remplace pas l'expertise du rédacteur.</footer>
+
+<script>
+const FACTEURS = {"maison": {"plus": [{"l": "Terrain de grande taille si rare dans le secteur", "mn": 0.05, "mx": 0.15, "a": "Comparer la contenance cadastrale à la moyenne des ventes DVF du secteur : le surplus de terrain se négocie au prix du terrain nu, pas du bâti.", "s": "Auto — Cadastre + DVF"}, {"l": "Jardin paysagé / mare / étang", "mn": 0.03, "mx": 0.1, "a": "Aménagement déjà amorti par le vendeur ; chiffrer le coût de création équivalent pour justifier la prime.", "s": "Manuel"}, {"l": "Jardin écologique / phytoépuration", "mn": 0.02, "mx": 0.05, "a": "Argument d'économie de charges et de conformité assainissement ; produire le certificat SPANC.", "s": "Manuel"}, {"l": "Piscine / hammam / sauna", "mn": 0.05, "mx": 0.15, "a": "Prime plus forte au sud ; vérifier déclaration préalable et conformité sécurité, sinon l'argument se retourne.", "s": "Semi-auto — Cadastre / IGN"}, {"l": "Surfaces annexes (sous-sol, cave, abri, hangar, garage, cabanon)", "mn": 0.02, "mx": 0.1, "a": "Valoriser en surface pondérée (coefficient 0,3 à 0,5) et non en surface habitable.", "s": "Semi-auto — Cadastre / BDNB"}, {"l": "Vue dégagée ou imprenable", "mn": 0.03, "mx": 0.05, "a": "Vérifier au PLU que la vue est protégée (zone inconstructible) : une vue garantie vaut le double d'une vue tolérée.", "s": "Semi-auto — PLU (constructibilité)"}, {"l": "Décoration soignée, neuf, matériaux haut de gamme, rénovation de qualité", "mn": 0.02, "mx": 0.1, "a": "Demander les factures d'entreprises et les décennales : une rénovation justifiée se paie, une rénovation déclarée non.", "s": "Manuel"}, {"l": "Maison de caractère, ancienne ou d'architecte", "mn": 0.02, "mx": 0.05, "a": "Rarité du produit : sortir les ventes DVF comparables pour montrer l'absence d'offre équivalente.", "s": "Semi-auto — BDNB (année)"}, {"l": "Adresse de prestige", "mn": 0.02, "mx": 0.05, "a": "Appuyer sur l'écart de prix médian entre la rue et la commune dans les données DVF.", "s": "Auto — DVF (écart rue/commune)"}, {"l": "Proximité commerces, écoles, transports", "mn": 0.02, "mx": 0.05, "a": "Chiffrer en temps de trajet réel, pas en distance ; la carte scolaire est un argument fort auprès des familles.", "s": "Auto — BAN + transports"}, {"l": "Beaux volumes (grand séjour, grandes chambres)", "mn": 0.01, "mx": 0.03, "a": "Rapport surface du séjour / surface totale supérieur à la norme du secteur.", "s": "Manuel"}, {"l": "Double orientation est / ouest", "mn": 0.01, "mx": 0.03, "a": "Confort thermique et lumière toute la journée ; se cumule mal avec la ligne orientation sud, ne cocher qu'une des deux.", "s": "Semi-auto — Cadastre (géométrie)"}, {"l": "Orientation sud / sud-ouest des pièces de vie", "mn": 0.01, "mx": 0.04, "a": "Pondérer par la zone climatique : forte prime au nord de la Loire, neutre à négative en zone méditerranéenne (surchauffe estivale).", "s": "Semi-auto — Cadastre (géométrie)"}, {"l": "Logement économe (DPE A ou B) / panneaux solaires / maison passive", "mn": 0.03, "mx": 0.1, "a": "Traduire en économie annuelle de charges capitalisée sur dix ans ; opposable aux investisseurs.", "s": "Auto — ADEME (DPE)"}, {"l": "Véranda, verrière, puits de lumière", "mn": 0.02, "mx": 0.05, "a": "Vérifier l'autorisation d'urbanisme et l'intégration en surface taxable avant de valoriser.", "s": "Manuel"}, {"l": "Potentiel d'extension (règles du PLU, emprise disponible)", "mn": 0.01, "mx": 0.03, "a": "Argument de réserve foncière : joindre l'extrait du règlement de zone.", "s": "Semi-auto — PLU + Cadastre"}, {"l": "Terrasse sur pièce principale", "mn": 0.01, "mx": 0.03, "a": "Prolongement de la pièce de vie ; valoriser au tiers du prix du m² habitable.", "s": "Manuel"}, {"l": "Stationnement privatif en zone tendue", "mn": 0.02, "mx": 0.08, "a": "Se négocie séparément en centre-ville : produire le prix moyen d'un emplacement dans le secteur.", "s": "Manuel"}, {"l": "Bien libre de toute occupation", "mn": 0.02, "mx": 0.05, "a": "Élargit la cible aux acquéreurs occupants, qui paient plus cher qu'un investisseur.", "s": "Manuel (bail / titre)"}, {"l": "Raccordement fibre / très haut débit", "mn": 0.01, "mx": 0.02, "a": "Devenu un prérequis pour le télétravail ; l'absence se négocie davantage que la présence ne se valorise.", "s": "Auto — Arcep (fibre)"}, {"l": "Rareté du produit sur le secteur (peu d'offre comparable)", "mn": 0.03, "mx": 0.1, "a": "Compter les ventes DVF du même type sur cinq ans : moins de trois comparables justifie une prime de rareté.", "s": "Auto — DVF (comparables)"}, {"l": "Absence de risque naturel identifié (hors zone)", "mn": 0.01, "mx": 0.03, "a": "État des risques vierge : argument de sécurité assurantielle et de revente.", "s": "Auto — Géorisques"}], "moins": [{"l": "Aménagements extérieurs à prévoir (portail, clôtures, massifs)", "mn": -0.02, "mx": -0.05, "a": "Chiffrer par devis : la décote doit égaler le coût des travaux, pas une impression.", "s": "Manuel"}, {"l": "Mauvaise distribution des pièces", "mn": -0.05, "mx": -0.1, "a": "Chambre en enfilade, absence de dégagement : coût de reprise des cloisons à opposer.", "s": "Manuel"}, {"l": "Maison sombre ou exposée au nord", "mn": -0.05, "mx": -0.1, "a": "Argument de confort et de charges de chauffage ; se vérifie sur le plan cadastral et l'heure de visite.", "s": "Semi-auto — Cadastre (géométrie)"}, {"l": "Moins-value très grande surface (plus de 200 m²) sauf prestige", "mn": -0.05, "mx": -0.2, "a": "Le prix au m² décroît avec la surface : montrer la courbe sur les ventes DVF du secteur.", "s": "Auto — DVF (courbe prix/surface)"}, {"l": "Faible hauteur sous plafond (1,80 m à 2,20 m)", "mn": -0.05, "mx": -0.1, "a": "Impacte la surface Carrez et l'agrément ; irrémédiable, donc décote ferme.", "s": "Semi-auto — BDNB (hauteur)"}, {"l": "Vis-à-vis proche / bord de route", "mn": -0.05, "mx": -0.15, "a": "Photographier depuis les pièces de vie ; cumuler avec la ligne nuisances seulement si les sources diffèrent.", "s": "Semi-auto — Cadastre / IGN"}, {"l": "Logement à rafraîchir (peinture, petite décoration)", "mn": -0.05, "mx": -0.2, "a": "Devis de remise en état ; distinguer nettement du poste rénovation lourde pour rester crédible.", "s": "Manuel"}, {"l": "Logement à rénover", "mn": -0.05, "mx": -0.2, "a": "Décote égale au coût des travaux majoré du risque et du temps de chantier.", "s": "Manuel"}, {"l": "Adresse non cotée ou environnement dévalorisant", "mn": -0.05, "mx": -0.1, "a": "Écart de prix médian DVF entre la rue et la commune, dans l'autre sens.", "s": "Auto — DVF (écart rue/commune)"}, {"l": "Existence d'une servitude", "mn": -0.05, "mx": -0.1, "a": "Passage, vue, tour d'échelle, canalisation : produire le titre et mesurer l'emprise réelle.", "s": "Manuel (titre)"}, {"l": "Travaux à régulariser (DAACT, décennale, autorisation manquante)", "mn": -0.01, "mx": -0.03, "a": "Risque juridique chiffrable : coût de la régularisation plus aléa de refus.", "s": "Manuel (urbanisme)"}, {"l": "Nuisance de voisinage (route, train, avions, café)", "mn": -0.05, "mx": -0.1, "a": "Carte de bruit et plan d'exposition au bruit : pièce objective imparable.", "s": "Semi-auto — Cartes de bruit"}, {"l": "Cible restreinte d'acquéreurs (ne peut pas plaire à tout le monde)", "mn": -0.05, "mx": -0.1, "a": "Argument de délai de commercialisation : moins d'acquéreurs, donc plus de temps et moins de prix.", "s": "Manuel"}, {"l": "Éloignement des commerces ou des transports", "mn": -0.05, "mx": -0.1, "a": "Chiffrer le coût annuel du second véhicule rendu nécessaire.", "s": "Auto — BAN + transports"}, {"l": "DPE F ou G — interdiction de location", "mn": -0.05, "mx": -0.2, "a": "Argument le plus fort du moment : le bien sort du marché locatif, donc de la cible investisseurs. Joindre le coût de l'audit énergétique.", "s": "Auto — ADEME (DPE)"}, {"l": "Bien occupé (bail en cours) au lieu d'un bien libre", "mn": -0.1, "mx": -0.3, "a": "Décote la plus lourde : elle dépend de la durée restante du bail et de l'écart entre loyer perçu et loyer de marché.", "s": "Manuel (bail)"}, {"l": "Assainissement non collectif non conforme", "mn": -0.03, "mx": -0.08, "a": "Rapport SPANC : mise en conformité obligatoire dans l'année de la vente, coût à la charge de l'acquéreur.", "s": "Manuel (SPANC)"}, {"l": "Toiture ou charpente en fin de vie", "mn": -0.05, "mx": -0.15, "a": "Devis couvreur ; poste structurel non finançable par des travaux d'embellissement.", "s": "Manuel"}, {"l": "Amiante ou plomb avérés", "mn": -0.03, "mx": -0.1, "a": "Décote égale au coût de désamiantage ou de confinement, plus le surcoût de tout chantier ultérieur.", "s": "Semi-auto — BDNB + diagnostics"}, {"l": "Risque inondation / zone de PPRI", "mn": -0.05, "mx": -0.15, "a": "État des risques et arrêtés de catastrophe naturelle ; impact direct sur la prime d'assurance.", "s": "Auto — Géorisques (PPRI)"}, {"l": "Retrait-gonflement des argiles (aléa moyen à fort)", "mn": -0.03, "mx": -0.08, "a": "Fissuration et surcoût de fondation pour toute extension ; carte aléa Géorisques à l'appui.", "s": "Auto — Géorisques (argiles)"}, {"l": "Site pollué ou installation classée à proximité", "mn": -0.05, "mx": -0.15, "a": "Bases BASOL et BASIAS : risque de dépollution et défaut de réputation du secteur.", "s": "Auto — Géorisques (Basol/Basias)"}, {"l": "Chauffage fioul ou installation vétuste", "mn": -0.02, "mx": -0.05, "a": "Coût de remplacement du générateur et perspective réglementaire défavorable.", "s": "Auto — ADEME (DPE)"}]}, "appartement": {"plus": [{"l": "Étage élevé avec ascenseur", "mn": 0.02, "mx": 0.06, "a": "Lumière, calme et absence de vis-à-vis ; la prime croît avec l'étage tant que l'ascenseur suit.", "s": "Manuel"}, {"l": "Dernier étage / attique", "mn": 0.03, "mx": 0.08, "a": "Produit rare en immeuble ancien ; vérifier l'isolation de toiture qui peut annuler la prime.", "s": "Manuel"}, {"l": "Balcon, terrasse ou loggia", "mn": 0.03, "mx": 0.1, "a": "Valoriser au tiers ou à la moitié du m² habitable selon la profondeur et l'exposition.", "s": "Manuel"}, {"l": "Vue dégagée ou imprenable", "mn": 0.03, "mx": 0.08, "a": "Vérifier la constructibilité du terrain d'en face : une vue garantie se paie, une vue exposée non.", "s": "Semi-auto — PLU (constructibilité)"}, {"l": "Stationnement ou box en sous-sol (zone tendue)", "mn": 0.03, "mx": 0.1, "a": "Se négocie en valeur autonome : produire le prix moyen d'un emplacement dans le quartier.", "s": "Manuel"}, {"l": "Cave ou annexe privative", "mn": 0.01, "mx": 0.03, "a": "Rarissime dans le neuf ; chiffrer au prix du m² de stockage du secteur.", "s": "Manuel (lot / titre)"}, {"l": "Adresse de prestige", "mn": 0.02, "mx": 0.05, "a": "Écart de prix médian DVF entre la voie et l'arrondissement ou la commune.", "s": "Auto — DVF (écart rue/commune)"}, {"l": "Proximité d'un transport structurant (métro, gare, tramway)", "mn": 0.02, "mx": 0.06, "a": "Mesurer en minutes à pied ; au-delà de dix minutes la prime s'efface.", "s": "Auto — BAN + transports"}, {"l": "Traversant / double orientation", "mn": 0.02, "mx": 0.05, "a": "Ventilation naturelle et lumière : argument de confort d'été, de plus en plus recherché.", "s": "Manuel"}, {"l": "Orientation sud ou sud-ouest des pièces de vie", "mn": 0.01, "mx": 0.04, "a": "Pondérer par la zone climatique et par l'étage : un sud au rez-de-chaussée sur cour ne vaut rien.", "s": "Semi-auto — Cadastre (géométrie)"}, {"l": "Beaux volumes, belle hauteur sous plafond (ancien)", "mn": 0.02, "mx": 0.05, "a": "Moulures, parquet, cheminée : cachet non reproductible dans le neuf.", "s": "Semi-auto — BDNB (année)"}, {"l": "Immeuble de caractère, parties communes soignées", "mn": 0.02, "mx": 0.05, "a": "Ravalement récent et hall entretenu : signal d'une copropriété saine, à documenter par les PV d'assemblée.", "s": "Semi-auto — BDNB (année)"}, {"l": "Rénovation de qualité, matériaux haut de gamme", "mn": 0.02, "mx": 0.1, "a": "Exiger factures et décennales ; sinon la prime retombe au niveau d'un simple rafraîchissement.", "s": "Manuel"}, {"l": "DPE A ou B", "mn": 0.02, "mx": 0.06, "a": "Charges maîtrisées et location sans contrainte : argument dimensionnant pour un investisseur.", "s": "Auto — ADEME (DPE)"}, {"l": "Gardien, résidence sécurisée", "mn": 0.01, "mx": 0.03, "a": "À mettre en regard du niveau de charges, sous peine d'argument contradictoire.", "s": "Manuel"}, {"l": "Bien libre de toute occupation", "mn": 0.02, "mx": 0.05, "a": "Élargit la cible aux acquéreurs occupants, qui paient plus cher qu'un investisseur.", "s": "Manuel (bail)"}, {"l": "Rareté du produit sur le secteur", "mn": 0.03, "mx": 0.1, "a": "Moins de trois ventes DVF comparables sur cinq ans : prime de rareté justifiée.", "s": "Auto — DVF (comparables)"}], "moins": [{"l": "Rez-de-chaussée sur rue", "mn": -0.05, "mx": -0.15, "a": "Sécurité, bruit et vis-à-vis : décote structurelle qu'aucun travaux ne corrige.", "s": "Manuel"}, {"l": "Absence d'ascenseur au-delà du troisième étage", "mn": -0.05, "mx": -0.12, "a": "Exclut une partie de la cible (familles, seniors) ; vérifier si une installation est techniquement possible.", "s": "Semi-auto — BDNB (niveaux)"}, {"l": "Charges de copropriété importantes", "mn": -0.1, "mx": -0.2, "a": "Comparer le montant au m² à la moyenne du secteur ; capitaliser l'écart sur dix ans.", "s": "Manuel (PV d'AG)"}, {"l": "Copropriété en difficulté (procédure, mandataire ad hoc, impayés)", "mn": -0.1, "mx": -0.25, "a": "Registre nationale des copropriétés et PV d'assemblée : risque d'appel de fonds imprévisible.", "s": "Auto — Registre national des copropriétés"}, {"l": "Travaux votés non payés / ravalement à venir", "mn": -0.03, "mx": -0.15, "a": "Quote-part chiffrée au PV d'assemblée : déduction directe du prix, non une impression.", "s": "Manuel (PV d'AG)"}, {"l": "Vis-à-vis proche ou cour sombre", "mn": -0.05, "mx": -0.15, "a": "Photographier depuis les fenêtres ; mesurer la distance à l'immeuble d'en face.", "s": "Semi-auto — Cadastre / IGN"}, {"l": "DPE F ou G — interdiction de location", "mn": -0.05, "mx": -0.2, "a": "Le bien sort du marché locatif ; en copropriété la rénovation dépend d'un vote, donc l'aléa est plus lourd qu'en maison.", "s": "Auto — ADEME (DPE)"}, {"l": "Logement à rafraîchir", "mn": -0.05, "mx": -0.2, "a": "Devis de remise en état, distinct du poste rénovation lourde.", "s": "Manuel"}, {"l": "Logement à rénover", "mn": -0.05, "mx": -0.2, "a": "Coût des travaux majoré des contraintes de chantier en copropriété (horaires, monte-charge, autorisations).", "s": "Manuel"}, {"l": "Mauvaise distribution des pièces", "mn": -0.05, "mx": -0.1, "a": "Chambre traversée, cuisine borgne : coût de reprise des cloisons, sous réserve des murs porteurs.", "s": "Manuel"}, {"l": "Exposition plein nord", "mn": -0.03, "mx": -0.08, "a": "Lumière et charges de chauffage ; se vérifie au plan cadastral.", "s": "Semi-auto — Cadastre (géométrie)"}, {"l": "Nuisances (route, train, bar, aéroport)", "mn": -0.05, "mx": -0.1, "a": "Carte de bruit et plan d'exposition au bruit à produire.", "s": "Semi-auto — Cartes de bruit"}, {"l": "Bien occupé (bail en cours)", "mn": -0.1, "mx": -0.3, "a": "Décote fonction de la durée restante du bail et de l'écart entre loyer perçu et loyer de marché ; loi de 1989 ou bail commercial.", "s": "Manuel (bail)"}, {"l": "Surface atypique / cible restreinte", "mn": -0.05, "mx": -0.1, "a": "Grand cinq pièces sans ascenseur, studio de moins de 12 m² : allongement du délai de vente.", "s": "Auto — DVF (comparables)"}, {"l": "Éloignement des commerces ou des transports", "mn": -0.05, "mx": -0.1, "a": "Chiffrer en temps de trajet réel aux heures de pointe.", "s": "Auto — BAN + transports"}, {"l": "Amiante dans les parties privatives ou communes", "mn": -0.03, "mx": -0.08, "a": "Diagnostic amiante des parties communes : surcoût de tout chantier futur.", "s": "Semi-auto — BDNB + diagnostics"}, {"l": "Chambre de service ou dépendance sans confort", "mn": -0.03, "mx": -0.1, "a": "Absence de point d'eau ou de WC privé : valoriser à part et non au m² habitable.", "s": "Manuel"}]}};
+</script>
+<script>
+/* ---------- état ---------- */
+const S = { type:'maison', sel:{}, pre:{}, coords:null, ville:'' };
+const euro = n => (isFinite(n)?Math.round(n):0).toLocaleString('fr-FR')+' €';
+const pct = n => (n>0?'+':'')+(n*100).toFixed(1).replace('.',',')+' %';
+const key = (g,i)=>S.type+'|'+g+'|'+i;
+
+/* ---------- interrogation des bases ---------- */
+const BASES = [
+  {id:'ban', nom:'Base adresse nationale'},
+  {id:'cad', nom:'Cadastre (parcelle)'},
+  {id:'dvf', nom:'Ventes enregistrées (DVF)'},
+  {id:'dpe', nom:'Diagnostics énergétiques (ADEME)'},
+  {id:'ris', nom:'Risques (Géorisques)'},
+  {id:'poi', nom:'Commerces et transports'}
+];
+function statut(id, etat, txt){
+  const el = document.getElementById('st-'+id);
+  if(!el) return;
+  el.innerHTML = '<b>'+BASES.find(b=>b.id===id).nom+'</b> — <span class="'+(etat==='ok'?'ok':(etat==='ko'?'ko':''))+'">'+txt+'</span>';
+}
+function initStatuts(){
+  document.getElementById('statuts').innerHTML =
+    BASES.map(b=>'<div class="stat" id="st-'+b.id+'"><b>'+b.nom+'</b> — en attente</div>').join('');
+}
+async function jget(url, ms=9000){
+  const ctl = new AbortController();
+  const t = setTimeout(()=>ctl.abort(), ms);
+  try{
+    const r = await fetch(url, {signal:ctl.signal});
+    if(!r.ok) throw new Error(r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+
+/* autocomplétion adresse */
+let tAdr=null;
+document.getElementById('adr').addEventListener('input', e=>{
+  clearTimeout(tAdr);
+  const q = e.target.value.trim();
+  if(q.length<4){ document.getElementById('sugg').style.display='none'; return; }
+  tAdr = setTimeout(async ()=>{
+    try{
+      const d = await jget('https://api-adresse.data.gouv.fr/search/?limit=5&q='+encodeURIComponent(q), 6000);
+      const box = document.getElementById('sugg');
+      if(!d.features || !d.features.length){ box.style.display='none'; return; }
+      box.innerHTML = d.features.map(f=>'<div data-lon="'+f.geometry.coordinates[0]+'" data-lat="'+f.geometry.coordinates[1]+'" data-ville="'+(f.properties.city||'')+'">'+f.properties.label+'</div>').join('');
+      box.style.display='block';
+      box.querySelectorAll('div').forEach(el=>el.onclick=()=>{
+        document.getElementById('adr').value = el.textContent;
+        S.coords = {lat:+el.dataset.lat, lon:+el.dataset.lon};
+        S.ville = el.dataset.ville;
+        box.style.display='none';
+      });
+    }catch(_){ document.getElementById('sugg').style.display='none'; }
+  }, 280);
+});
+
+async function interroger(){
+  const q = document.getElementById('adr').value.trim();
+  if(!q){ alert("Saisir d'abord une adresse."); return; }
+  document.getElementById('bandeau').classList.remove('on');
+  let echecs = 0;
+  S.notes = [];
+
+  /* BAN */
+  statut('ban','','interrogation…');
+  if(!S.coords){
+    try{
+      const d = await jget('https://api-adresse.data.gouv.fr/search/?limit=1&q='+encodeURIComponent(q));
+      if(d.features && d.features.length){
+        S.coords = {lat:d.features[0].geometry.coordinates[1], lon:d.features[0].geometry.coordinates[0]};
+        S.ville = d.features[0].properties.city||'';
+      }
+    }catch(_){}
+  }
+  if(S.coords){ statut('ban','ok','adresse localisée ('+S.coords.lat.toFixed(5)+', '+S.coords.lon.toFixed(5)+')'); }
+  else { statut('ban','ko','injoignable depuis cet écran'); echecs++; }
+
+  if(!S.coords){ finirEchec(echecs); return; }
+
+  /* Cadastre — contenance de la parcelle */
+  statut('cad','','interrogation…');
+  try{
+    const geo = encodeURIComponent(JSON.stringify({type:'Point',coordinates:[S.coords.lon,S.coords.lat]}));
+    const d = await jget('https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo);
+    const p = (d.features||[])[0];
+    if(p){
+      const c = p.properties.contenance||0;
+      S.parcelle = p.properties.section+' '+p.properties.numero+' — '+c.toLocaleString('fr-FR')+' m²';
+      statut('cad','ok','parcelle '+S.parcelle);
+      noter('Parcelle cadastrale '+S.parcelle);
+      if(S.type==='maison'){
+        preremplir('grandTerrain', c>=1200);
+        if(c>=1200) noter('Contenance supérieure à 1 200 m² : ligne « terrain de grande taille » proposée.');
+      }
+    } else { statut('cad','ko','aucune parcelle trouvée à ce point'); }
+  }catch(_){ statut('cad','ko','injoignable depuis cet écran'); echecs++; }
+
+  /* DVF */
+  statut('dvf','','interrogation…');
+  try{
+    const d = await jget('https://api.cquest.org/dvf?lat='+S.coords.lat+'&lon='+S.coords.lon+'&dist=700');
+    const cible = S.type==='maison' ? 'Maison' : 'Appartement';
+    const sRef = +document.getElementById('surf').value||0;
+    const proche = x => !sRef || (x.surface_relle_bati >= sRef*0.6 && x.surface_relle_bati <= sRef*1.6);
+    let brut = (d.resultats||[]).filter(x=>x.type_local===cible && x.valeur_fonciere>10000 && x.surface_relle_bati>9);
+    const cible2 = brut.filter(proche);
+    const cibleOk = cible2.length>=5;
+    const v = (cibleOk?cible2:brut)
+      .map(x=>({p: x.valeur_fonciere/x.surface_relle_bati, a:(x.date_mutation||'').slice(0,4)}))
+      .filter(x=>x.p>200 && x.p<35000);
+    if(v.length>=3){
+      const arr = v.map(x=>x.p).sort((a,b)=>a-b);
+      const med = arr[Math.floor(arr.length/2)];
+      document.getElementById('pm2').value = Math.round(med/10)*10;
+      document.getElementById('dvfInfo').textContent =
+        v.length+' ventes comparables retenues dans un rayon de 700 m'
+        +(cibleOk?(' et sur une surface voisine ('+Math.round(sRef*0.6)+' à '+Math.round(sRef*1.6)+' m²)'):' (toutes surfaces, faute de comparables de taille voisine)')
+        +' — médiane '+Math.round(med).toLocaleString('fr-FR')
+        +' €/m², fourchette '+Math.round(arr[Math.floor(arr.length*0.25)]).toLocaleString('fr-FR')
+        +' à '+Math.round(arr[Math.floor(arr.length*0.75)]).toLocaleString('fr-FR')+' €/m².';
+      statut('dvf','ok',v.length+' ventes comparables, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m²');
+      noter(v.length+' ventes comparables (700 m), médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m².');
+      preremplir('rarete', v.length<6);
+      if(v.length<6) noter('Moins de six comparables : ligne « rareté du produit » proposée.');
+      const voie = (document.getElementById('adr').value.toLowerCase().replace(/^[0-9a-z]*\s+/,'').split(',')[0]||'').trim();
+      const rue = brut.filter(x=>(x.adresse_nom_voie||'').toLowerCase().includes(voie.slice(0,12)) && x.surface_relle_bati>9)
+                      .map(x=>x.valeur_fonciere/x.surface_relle_bati).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
+      if(rue.length>=3){
+        const medRue = rue[Math.floor(rue.length/2)];
+        const ecart = medRue/med-1;
+        noter('Médiane de la voie : '+Math.round(medRue).toLocaleString('fr-FR')+' €/m², soit '+(ecart>0?'+':'')+(ecart*100).toFixed(0)+' % par rapport au secteur.');
+        preremplir('prestige', ecart>=0.15);
+        preremplir('nonCotee', ecart<=-0.15);
+      }
+      const sBien = +document.getElementById('surf').value||0;
+      if(S.type==='maison' && sBien>200){
+        preremplir('grandeSurface', true);
+        noter('Surface supérieure à 200 m² : ligne de moins-value de très grande surface proposée.');
+      }
+    } else {
+      statut('dvf','ko','moins de trois ventes comparables, saisie manuelle du prix au m²');
+      document.getElementById('dvfInfo').textContent = 'Trop peu de ventes comparables sur le secteur : saisir le prix au m² à dire d\'expert.';
+    }
+  }catch(_){ statut('dvf','ko','injoignable depuis cet écran'); echecs++; }
+
+  /* DPE */
+  statut('dpe','','interrogation…');
+  try{
+    const u='https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines?size=20&select=Etiquette_DPE,Date_établissement_DPE,Type_énergie_principale_chauffage,Surface_habitable_logement&geo_distance='+S.coords.lon+','+S.coords.lat+',150';
+    const d = await jget(u);
+    const r = (d.results||[]).filter(x=>x.Etiquette_DPE);
+    if(r.length){
+      const et = r[0].Etiquette_DPE;
+      statut('dpe','ok', r.length+' diagnostic(s) à moins de 150 m — étiquette la plus proche : '+et);
+      noter('Étiquette énergétique relevée à proximité immédiate : '+et+' ('+r.length+' diagnostic(s) à moins de 150 m).');
+      preremplir('dpeBon', ['A','B'].includes(et));
+      preremplir('dpeMauvais', ['F','G'].includes(et));
+      const ch = (r[0].Type_énergie_principale_chauffage||'').toLowerCase();
+      preremplir('fioul', ch.includes('fioul'));
+    } else { statut('dpe','ko','aucun diagnostic géolocalisé à proximité'); }
+  }catch(_){ statut('dpe','ko','injoignable depuis cet écran'); echecs++; }
+
+  /* Géorisques */
+  statut('ris','','interrogation…');
+  try{
+    const d = await jget('https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon='+S.coords.lon+','+S.coords.lat);
+    const txt = JSON.stringify(d).toLowerCase();
+    const inond = txt.includes('inondation');
+    const argile = txt.includes('argile') || txt.includes('retrait');
+    const poll = txt.includes('basol') || txt.includes('basias') || txt.includes('pollu');
+    preremplir('inondation', inond);
+    preremplir('argiles', argile);
+    preremplir('pollution', poll);
+    preremplir('sansRisque', !inond && !argile && !poll);
+    const l=[]; if(inond)l.push('inondation'); if(argile)l.push('argiles'); if(poll)l.push('sites pollués');
+    statut('ris','ok', l.length ? 'risques détectés : '+l.join(', ') : 'aucun risque majeur identifié');
+    noter(l.length ? ('Risques recensés sur la commune : '+l.join(', ')+'.') : 'Aucun risque majeur recensé sur la commune.');
+  }catch(_){ statut('ris','ko','injoignable depuis cet écran'); echecs++; }
+
+  /* Commerces et transports (OpenStreetMap) */
+  statut('poi','','interrogation…');
+  try{
+    const q = '[out:json][timeout:20];('
+      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[shop];'
+      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[amenity~"^(school|pharmacy|bakery|supermarket)$"];'
+      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[public_transport=station];'
+      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[highway=bus_stop];'
+      + ');out ids;';
+    const d = await jget('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q), 20000);
+    const n = (d.elements||[]).length;
+    statut('poi','ok', n+' commerces, écoles ou arrêts dans un rayon de 600 m');
+    noter(n+' commerces, écoles ou points d\'arrêt recensés dans un rayon de 600 m.');
+    preremplir('proximite', n>=15);
+    preremplir('eloignement', n<=2);
+  }catch(_){ statut('poi','ko','injoignable depuis cet écran'); echecs++; }
+
+  finirEchec(echecs);
+  const c = document.getElementById('carnet');
+  if((S.notes||[]).length){
+    c.textContent = 'CONSTATATIONS DES BASES PUBLIQUES\n\n• '+S.notes.join('\n• ');
+    c.style.display='block';
+  }
+  construire(); rendre();
+}
+function finirEchec(n){
+  if(n>0){
+    const b = document.getElementById('bandeau');
+    b.textContent = "Certaines bases n'ont pas répondu depuis cet écran. L'aperçu publié bloque les appels vers des sites extérieurs : une fois l'outil déployé sur le serveur du cabinet, ces interrogations fonctionnent normalement. Les lignes concernées restent à renseigner à la main.";
+    b.classList.add('on');
+  }
+}
+
+/* correspondance entre une donnée obtenue et une ligne du questionnaire */
+const CLES = {
+  dpeBon:      ['DPE A ou B','Logement économe'],
+  dpeMauvais:  ['DPE F ou G'],
+  fioul:       ['Chauffage fioul'],
+  inondation:  ['inondation'],
+  argiles:     ['argiles'],
+  pollution:   ['Site pollué'],
+  sansRisque:  ['Absence de risque'],
+  rarete:      ['Rareté du produit'],
+  grandTerrain:['Terrain de grande taille'],
+  prestige:    ['Adresse de prestige'],
+  nonCotee:    ['Adresse non cotée'],
+  grandeSurface:['très grande surface'],
+  proximite:   ['Proximité commerces','Proximité d\'un transport'],
+  eloignement: ['Éloignement des commerces']
+};
+function noter(t){ S.notes = S.notes||[]; S.notes.push(t); }
+function preremplir(cle, vrai){
+  if(!vrai) return;
+  const mots = CLES[cle]||[];
+  ['plus','moins'].forEach(g=>{
+    FACTEURS[S.type][g].forEach((f,i)=>{
+      if(mots.some(m=>f.l.toLowerCase().includes(m.toLowerCase()))){
+        S.pre[key(g,i)] = true;
+        if(S.sel[key(g,i)]===undefined) S.sel[key(g,i)] = 1; /* niveau « léger » par défaut */
+      }
+    });
+  });
+}
+
+/* ---------- rendu du questionnaire ---------- */
+const NIVEAUX = ['Sans objet','Léger','Marqué','Fort'];
+function valeurNiveau(f, n){
+  if(n===0) return 0;
+  if(n===1) return f.mn;
+  if(n===3) return f.mx;
+  return Math.round(((f.mn+f.mx)/2)*1000)/1000;
+}
+function classeSrc(s){ return s.startsWith('Auto')?'auto':(s.startsWith('Semi')?'semi':'manuel'); }
+
+function construire(){
+  const f = document.getElementById('filtre').value.trim().toLowerCase();
+  const vue = document.getElementById('vue').value;
+  const bloc = (g, titre) => {
+    const items = FACTEURS[S.type][g];
+    let n=0;
+    const lignes = items.map((x,i)=>{
+      const k = key(g,i);
+      const niv = S.sel[k]||0;
+      if(f && !(x.l.toLowerCase().includes(f) || x.a.toLowerCase().includes(f) || x.s.toLowerCase().includes(f))) return '';
+      if(vue==='retenus' && !niv) return '';
+      if(vue==='auto' && x.s.startsWith('Manuel')) return '';
+      n++;
+      const v = valeurNiveau(x, niv);
+      return '<div class="fac '+(niv?'act':'')+'" data-k="'+k+'">'
+        + '<div><div class="nom">'+x.l+'</div><div class="meta">'
+        + '<span class="src '+classeSrc(x.s)+'">'+x.s+'</span>'
+        + '<span class="mini">'+pct(x.mn)+' à '+pct(x.mx)+'</span>'
+        + (S.pre[k]?'<span class="pre">prérempli</span>':'')
+        + '</div><div class="arg">'+x.a+'</div></div>'
+        + '<div class="seg '+(g==='moins'?'neg':'')+'">'
+        + NIVEAUX.map((l,j)=>'<button data-k="'+k+'" data-n="'+j+'" class="'+(niv===j?'on':'')+'">'+l+'</button>').join('')
+        + '</div>'
+        + '<div class="val">'+(niv?pct(v):'—')+'</div>'
+        + '</div>';
+    }).join('');
+    const retenus = items.filter((_,i)=>S.sel[key(g,i)]).length;
+    return '<details open><summary>'+titre+'<span class="cpt">'+n+' affichés · '+retenus+' retenus</span></summary>'+(lignes||'<p class="mini">Aucun facteur ne correspond au filtre.</p>')+'</details>';
+  };
+  document.getElementById('listes').innerHTML =
+    bloc('plus','Facteurs valorisants') + '<div style="height:14px"></div>' + bloc('moins','Facteurs dévalorisants');
+  document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{
+    S.sel[b.dataset.k] = +b.dataset.n;
+    sauver(); construire(); rendre();
+  });
+}
+
+/* ---------- calcul ---------- */
+function rendre(){
+  const pm2 = +document.getElementById('pm2').value||0;
+  const surf = +document.getElementById('surf').value||0;
+  const ref = pm2*surf;
+  let sp=0, sm=0, mult=1;
+  const retenus=[];
+  ['plus','moins'].forEach(g=>{
+    FACTEURS[S.type][g].forEach((x,i)=>{
+      const niv = S.sel[key(g,i)]||0;
+      if(!niv) return;
+      const v = valeurNiveau(x, niv);
+      if(v>0) sp+=v; else sm+=v;
+      mult *= (1+v);
+      retenus.push({l:x.l, v:v, a:x.a, s:x.s, n:NIVEAUX[niv]});
+    });
+  });
+  const soldeBrut = sp+sm;
+  const solde = Math.max(-0.35, Math.min(0.35, soldeBrut));
+  const add = ref*(1+solde);
+  const mu = ref*mult;
+  const meth = document.getElementById('meth').value;
+  const principal = meth==='mult'?mu:add;
+  const autre = meth==='mult'?add:mu;
+
+  document.getElementById('refTxt').textContent = surf+' m² × '+pm2.toLocaleString('fr-FR')+' €/m²';
+  document.getElementById('valeur').textContent = ref?euro(principal):'—';
+  document.getElementById('fourchette').textContent = ref?('fourchette de négociation : '+euro(principal*0.95)+' à '+euro(principal*1.05)):'';
+  document.getElementById('lRef').textContent = euro(ref);
+  document.getElementById('lPlus').textContent = pct(sp);
+  document.getElementById('lMoins').textContent = pct(sm);
+  document.getElementById('lSolde').textContent = pct(meth==='mult'?(mult-1):solde) + (soldeBrut!==solde?' (plafonné)':'');
+  document.getElementById('lEcart').textContent = euro(principal-ref);
+  document.getElementById('lAutre').textContent = euro(autre);
+
+  const e = meth==='mult'?(mult-1):solde;
+  const j = document.getElementById('jaugeI');
+  const w = Math.min(Math.abs(e)/0.35,1)*50;
+  j.style.width = w+'%';
+  j.style.left = e>=0 ? '50%' : (50-w)+'%';
+  j.className = e>=0?'':'n';
+
+  if(!retenus.length){ document.getElementById('args').textContent = 'Aucun facteur retenu pour l\'instant.'; return; }
+  retenus.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));
+  const t = 'ARGUMENTAIRE DE NÉGOCIATION\n'
+    + document.getElementById('adr').value + '\n'
+    + 'Valeur de référence : '+euro(ref)+'  ('+pm2.toLocaleString('fr-FR')+' €/m² × '+surf+' m²)\n'
+    + 'Valeur retenue : '+euro(principal)+'   (écart '+euro(principal-ref)+', soit '+pct(e)+')\n\n'
+    + retenus.map(r=>'• '+r.l+'  ['+r.n+' — '+pct(r.v)+']\n   '+r.a+'\n   Source : '+r.s).join('\n\n')
+    + ((S.notes||[]).length ? '\n\nCONSTATATIONS DES BASES PUBLIQUES\n• '+S.notes.join('\n• ') : '');
+  document.getElementById('args').textContent = t;
+}
+
+/* ---------- persistance locale ---------- */
+function sauver(){ try{ localStorage.setItem('prix.etat', JSON.stringify({t:S.type, sel:S.sel, pre:S.pre})); }catch(_){}}
+function charger(){
+  try{
+    const d = JSON.parse(localStorage.getItem('prix.etat')||'null');
+    if(d){ S.type=d.t||'maison'; S.sel=d.sel||{}; S.pre=d.pre||{}; }
+  }catch(_){}
+}
+
+/* le choix libre / occupé du bloc 1 pilote directement les deux lignes correspondantes */
+function appliquerEtat(){
+  const e = document.getElementById('etat').value;
+  ['plus','moins'].forEach(g=>{
+    FACTEURS[S.type][g].forEach((f,i)=>{
+      const l = f.l.toLowerCase();
+      const estLibre = l.includes('bien libre');
+      const estOccupe = l.includes('bien occupé');
+      if(!estLibre && !estOccupe) return;
+      const k = key(g,i);
+      if(e==='nc'){ delete S.pre[k]; return; }
+      const retenu = (e==='libre' && estLibre) || (e==='occupe' && estOccupe);
+      if(retenu){ S.pre[k]=true; if(!S.sel[k]) S.sel[k]=1; }
+      else { delete S.pre[k]; S.sel[k]=0; }
+    });
+  });
+  sauver(); construire(); rendre();
+}
+
+/* ---------- branchements ---------- */
+function majType(t){
+  S.type=t;
+  document.getElementById('tMaison').classList.toggle('on', t==='maison');
+  document.getElementById('tAppart').classList.toggle('on', t==='appartement');
+  sauver(); construire(); rendre();
+}
+document.getElementById('tMaison').onclick = ()=>majType('maison');
+document.getElementById('tAppart').onclick = ()=>majType('appartement');
+document.getElementById('go').onclick = interroger;
+document.getElementById('raz').onclick = ()=>{ S.sel={}; S.pre={}; sauver(); construire(); rendre(); };
+['pm2','surf','meth'].forEach(id=>document.getElementById(id).addEventListener('input', rendre));
+document.getElementById('etat').addEventListener('change', appliquerEtat);
+['filtre','vue'].forEach(id=>document.getElementById(id).addEventListener('input', construire));
+document.getElementById('copier').onclick = async ()=>{
+  try{ await navigator.clipboard.writeText(document.getElementById('args').textContent);
+       document.getElementById('copier').textContent='Copié'; setTimeout(()=>document.getElementById('copier').textContent="Copier l'argumentaire",1600);
+  }catch(_){ alert('Copie impossible depuis ce navigateur.'); }
+};
+document.getElementById('imprimer').onclick = ()=>window.print();
+document.addEventListener('click', e=>{ if(!e.target.closest('.rel')) document.getElementById('sugg').style.display='none'; });
+
+charger(); initStatuts(); majType(S.type);
+</script>
+</body>
+</html>
