@@ -325,6 +325,33 @@ document.getElementById('adr').addEventListener('input', e=>{
   }, 280);
 });
 
+async function interrogerPoi(){
+  statut('poi','','interrogation…');
+  const la = S.coords.lat.toFixed(3), lo = S.coords.lon.toFixed(3);
+  try{
+    const d = await jget('/api/sources?type=poi&lat='+la+'&lon='+lo+'&r=600', 30000);
+    if(d.erreur) throw Object.assign(new Error('x'),{detail:d.erreur});
+    const n = d.n||0;
+    statut('poi','ok', n+' commerces, équipements ou arrêts dans un rayon de 600 m ('+(d.source||'')+')');
+    S.notes = (S.notes||[]).filter(t=>!t.includes('commerces, équipements'));
+    noter(n+" commerces, équipements ou points d'arrêt recensés dans un rayon de 600 m ("+(d.source||'')+").");
+    preremplir('proximite', n>=15);
+    preremplir('eloignement', n<=2);
+    construire(); rendre();
+    return true;
+  }catch(e){
+    const el = document.getElementById('st-poi');
+    statut('poi','ko', (e.detail||e.code||'échec'));
+    if(el && !el.querySelector('a')){
+      const a = document.createElement('a');
+      a.href='#'; a.textContent=' — réessayer'; a.style.color='var(--canard)';
+      a.onclick=(ev)=>{ ev.preventDefault(); interrogerPoi(); };
+      el.appendChild(a);
+    }
+    return false;
+  }
+}
+
 async function interroger(){
   const q = document.getElementById('adr').value.trim();
   if(!q){ alert("Saisir d'abord une adresse."); return; }
@@ -479,16 +506,7 @@ async function interroger(){
   }catch(e){ statut('ris','ko', e.detail||e.code||'échec'); echecs++; }
 
   /* 6 — Commerces et transports */
-  statut('poi','','interrogation…');
-  try{
-    const d = await jget('/api/sources?type=poi&lat='+S.coords.lat+'&lon='+S.coords.lon+'&r=600', 30000);
-    if(d.erreur) throw Object.assign(new Error('x'),{detail:d.erreur});
-    const n = d.n||0;
-    statut('poi','ok', n+' commerces, écoles ou arrêts dans un rayon de 600 m');
-    noter(n+" commerces, écoles ou points d'arrêt recensés dans un rayon de 600 m.");
-    preremplir('proximite', n>=15);
-    preremplir('eloignement', n<=2);
-  }catch(e){ statut('poi','ko', e.detail||e.code||'échec'); echecs++; }
+  await interrogerPoi();
 
   finirEchec(echecs);
   const c = document.getElementById('carnet');
