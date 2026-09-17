@@ -252,6 +252,45 @@ async function jfirst(urls, ms){
   }
   const e = new Error('toutes injoignables'); e.detail = errs.join(' — '); throw e;
 }
+/* distance en mètres entre deux points (formule de Haversine) */
+function distM(la1,lo1,la2,lo2){
+  if(!isFinite(la1)||!isFinite(lo1)) return 1e9;
+  const R=6371000, r=Math.PI/180;
+  const dLa=(la2-la1)*r, dLo=(lo2-lo1)*r;
+  const a=Math.sin(dLa/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+/* lecture du fichier de ventes Etalab (une commune, une année) */
+function lireCsvDvf(txt, annee){
+  const lignes = txt.split('\n');
+  if(!lignes.length) return [];
+  const ent = lignes[0].split(',');
+  const idx = n => ent.indexOf(n);
+  const iVf=idx('valeur_fonciere'), iSb=idx('surface_reelle_bati'), iTl=idx('type_local'),
+        iVo=idx('adresse_nom_voie'), iLa=idx('latitude'), iLo=idx('longitude'), iDt=idx('date_mutation');
+  if(iVf<0||iSb<0||iTl<0) return [];
+  const out=[];
+  for(let k=1;k<lignes.length;k++){
+    const l=lignes[k];
+    if(!l) continue;
+    const c = l.indexOf('"')<0 ? l.split(',') : decoupe(l);
+    const vf=+c[iVf], sb=+c[iSb];
+    if(!vf||!sb) continue;
+    out.push({vf:vf, sb:sb, tl:c[iTl]||'', voie:(iVo>=0?c[iVo]:'')||'',
+              lat:+(iLa>=0?c[iLa]:NaN), lon:+(iLo>=0?c[iLo]:NaN), an:(iDt>=0?c[iDt]:annee)});
+  }
+  return out;
+}
+function decoupe(l){
+  const r=[]; let cur='', q=false;
+  for(let i=0;i<l.length;i++){
+    const ch=l[i];
+    if(ch==='"'){ q=!q; continue; }
+    if(ch===',' && !q){ r.push(cur); cur=''; continue; }
+    cur+=ch;
+  }
+  r.push(cur); return r;
+}
 /* lecture tolérante d'un champ quel que soit le nom exact renvoyé */
 function champ(o, noms){
   for(const n of noms){ if(o[n]!==undefined && o[n]!==null && o[n]!=='') return o[n]; }
@@ -303,78 +342,85 @@ async function interroger(){
     statut('ban','ok','adresse localisée ('+S.coords.lat.toFixed(5)+', '+S.coords.lon.toFixed(5)+')'+(S.codeInsee?' — commune '+S.codeInsee:''));
   } else { statut('ban','ko','adresse non localisée'); finirEchec(++echecs); return; }
 
-  /* 2 — Cadastre */
+  /* 2 — Cadastre : Géoplateforme IGN puis apicarto */
   statut('cad','','interrogation…');
   try{
     const geo = encodeURIComponent(JSON.stringify({type:'Point',coordinates:[S.coords.lon,S.coords.lat]}));
+    const wfs = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&outputFormat=application/json&count=1'
+      + '&TYPENAMES=CADASTRALPARCELS.PARCELLAIRE_EXPRESS:parcelle'
+      + '&CQL_FILTER=' + encodeURIComponent("INTERSECTS(geom,POINT("+S.coords.lon+" "+S.coords.lat+"))");
     const r = await jfirst([
-      'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo+'&source_ign=PCI',
+      wfs,
       'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo,
-      'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo+'&source_ign=BDP'
-    ], 15000);
+      'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo+'&source_ign=PCI'
+    ], 20000);
     const p = (r.d.features||[])[0];
     if(p){
       const pr = p.properties||{};
-      const c = +champ(pr,['contenance','CONTENANCE'])||0;
-      S.parcelle = (pr.section||'')+' '+(pr.numero||'')+(c?' — '+c.toLocaleString('fr-FR')+' m²':'');
-      statut('cad','ok','parcelle '+S.parcelle);
+      const c = +champ(pr,['contenance','CONTENANCE','contenance_m2'])||0;
+      const sec = champ(pr,['section','SECTION'])||'', num = champ(pr,['numero','NUMERO','numero_parcelle'])||'';
+      S.parcelle = (sec+' '+num).trim()+(c?' — '+c.toLocaleString('fr-FR')+' m²':'');
+      statut('cad','ok','parcelle '+S.parcelle+' ('+new URL(r.u).hostname+')');
       noter('Parcelle cadastrale '+S.parcelle+'.');
       if(S.type==='maison' && c>=1200){ preremplir('grandTerrain', true); noter('Contenance supérieure à 1 200 m² : ligne « terrain de grande taille » proposée.'); }
-    } else { statut('cad','ko','aucune parcelle renvoyée à ce point'); }
+    } else { statut('cad','ko','réponse vide : aucune parcelle à ce point'); }
   }catch(e){ statut('cad','ko', e.detail||e.code||'échec'); echecs++; }
 
-  /* 3 — Ventes enregistrées */
-  statut('dvf','','interrogation…');
+  /* 3 — Ventes enregistrées : fichiers officiels Etalab, commune par commune */
+  statut('dvf','','téléchargement des ventes de la commune…');
   const sRef = +document.getElementById('surf').value||0;
   try{
-    const pt = "POINT("+S.coords.lon+" "+S.coords.lat+")";
-    const ods = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/demandes-de-valeurs-foncieres/records?limit=100&where="
-      + encodeURIComponent("within_distance(geolocalisation, geom'"+pt+"', 700m)");
-    const r = await jfirst([
-      'https://api.cquest.org/dvf?lat='+S.coords.lat+'&lon='+S.coords.lon+'&dist=700',
-      ods,
-      ods.replace('geolocalisation','geo_point')
-    ], 20000);
-    const brutSrc = r.d.resultats || r.d.results || r.d.records || [];
-    const brut = brutSrc.map(x=>{
-      const o = x.fields || x.record || x;
-      return {
-        tl: champ(o,['type_local','Type_local'])||'',
-        vf: +champ(o,['valeur_fonciere','Valeur_fonciere'])||0,
-        sb: +champ(o,['surface_relle_bati','surface_reelle_bati','Surface_reelle_bati'])||0,
-        voie: (champ(o,['adresse_nom_voie','Adresse_nom_voie'])||'')+'',
-        an: (champ(o,['date_mutation','Date_mutation'])||'')+''
-      };
-    }).filter(x=>x.tl===(S.type==='maison'?'Maison':'Appartement') && x.vf>10000 && x.sb>9);
+    if(!S.codeInsee) throw Object.assign(new Error('x'),{code:'code commune inconnu'});
+    const dep = S.codeInsee.startsWith('97') ? S.codeInsee.slice(0,3) : S.codeInsee.slice(0,2);
+    const anneeH = new Date().getFullYear()-1;
+    const annees = [anneeH, anneeH-1, anneeH-2, anneeH-3, anneeH-4];
+    let brut = [], lues = [], erreurs = [];
+    for(const a of annees){
+      if(brut.length>400) break;
+      const url = 'https://files.data.gouv.fr/geo-dvf/latest/csv/'+a+'/communes/'+dep+'/'+S.codeInsee+'.csv';
+      try{
+        const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 30000);
+        const rep = await fetch(url, {signal:ctl.signal}); clearTimeout(t);
+        if(!rep.ok){ erreurs.push(a+' : HTTP '+rep.status); continue; }
+        const txt = await rep.text();
+        brut = brut.concat(lireCsvDvf(txt, a));
+        lues.push(a);
+        statut('dvf','', 'lecture des ventes '+lues.join(', ')+'…');
+      }catch(err){ erreurs.push(a+' : '+(err.name==='AbortError'?'délai dépassé':'appel refusé')); }
+    }
+    if(!lues.length) throw Object.assign(new Error('x'),{detail:'fichiers Etalab injoignables ('+erreurs.join(', ')+')'});
 
+    const cible = S.type==='maison'?'Maison':'Appartement';
+    const dansRayon = brut.filter(x=>x.tl===cible && x.vf>10000 && x.sb>9 && distM(x.lat,x.lon,S.coords.lat,S.coords.lon)<=700);
     const proche = x => !sRef || (x.sb>=sRef*0.6 && x.sb<=sRef*1.6);
-    const restreint = brut.filter(proche);
+    const restreint = dansRayon.filter(proche);
     const cibleOk = restreint.length>=5;
-    const jeu = (cibleOk?restreint:brut).map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
+    const retenus = cibleOk?restreint:dansRayon;
+    const jeu = retenus.map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
 
     if(jeu.length>=3){
       const med = jeu[Math.floor(jeu.length/2)];
       document.getElementById('pm2').value = Math.round(med/10)*10;
       document.getElementById('dvfInfo').textContent =
-        jeu.length+' ventes comparables dans un rayon de 700 m'
+        jeu.length+' ventes de '+(S.type==='maison'?'maisons':'appartements')+' dans un rayon de 700 m, années '+lues.slice().sort().join(', ')
         + (cibleOk?(' et sur une surface voisine ('+Math.round(sRef*0.6)+' à '+Math.round(sRef*1.6)+' m²)'):' (toutes surfaces, faute de comparables de taille voisine)')
         + ' — médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m², quartiles '
         + Math.round(jeu[Math.floor(jeu.length*0.25)]).toLocaleString('fr-FR')+' à '
-        + Math.round(jeu[Math.floor(jeu.length*0.75)]).toLocaleString('fr-FR')+' €/m². Source : '+new URL(r.u).hostname;
-      statut('dvf','ok', jeu.length+' ventes, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² ('+new URL(r.u).hostname+')');
-      noter(jeu.length+' ventes comparables retenues, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m².');
+        + Math.round(jeu[Math.floor(jeu.length*0.75)]).toLocaleString('fr-FR')+' €/m².';
+      statut('dvf','ok', jeu.length+' ventes retenues, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² (fichiers Etalab '+lues.slice().sort().join(', ')+')');
+      noter(jeu.length+' ventes comparables retenues dans un rayon de 700 m, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m².');
       if(jeu.length<6){ preremplir('rarete', true); noter('Moins de six comparables : ligne « rareté du produit » proposée.'); }
-      const voie = (q.toLowerCase().replace(/^[0-9a-z]*\s+/,'').split(',')[0]||'').trim().slice(0,12);
-      const rue = brut.filter(x=>voie && x.voie.toLowerCase().includes(voie)).map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
+      const voie = (q.toLowerCase().replace(/^[0-9a-z]*\s+/,'').split(',')[0]||'').replace(/\s+\d{5}.*$/,'').trim().slice(0,12);
+      const rue = dansRayon.filter(x=>voie && x.voie.toLowerCase().includes(voie)).map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
       if(rue.length>=3){
         const medRue = rue[Math.floor(rue.length/2)], ecart = medRue/med-1;
-        noter('Médiane de la voie : '+Math.round(medRue).toLocaleString('fr-FR')+' €/m², soit '+(ecart>0?'+':'')+(ecart*100).toFixed(0)+' % par rapport au secteur.');
+        noter('Médiane de la voie ('+rue.length+' ventes) : '+Math.round(medRue).toLocaleString('fr-FR')+' €/m², soit '+(ecart>0?'+':'')+(ecart*100).toFixed(0)+' % par rapport au secteur.');
         preremplir('prestige', ecart>=0.15);
         preremplir('nonCotee', ecart<=-0.15);
       }
       if(S.type==='maison' && sRef>200){ preremplir('grandeSurface', true); noter('Surface supérieure à 200 m² : ligne de moins-value de très grande surface proposée.'); }
     } else {
-      statut('dvf','ko','réponse obtenue mais moins de trois ventes exploitables');
+      statut('dvf','ko','fichiers lus ('+lues.slice().sort().join(', ')+') mais moins de trois ventes exploitables dans le rayon');
       document.getElementById('dvfInfo').textContent = 'Trop peu de ventes comparables : saisir le prix au m² à dire d\'expert.';
     }
   }catch(e){ statut('dvf','ko', e.detail||e.code||'échec'); echecs++; }
@@ -400,15 +446,21 @@ async function interroger(){
   /* 5 — Risques */
   statut('ris','','interrogation…');
   try{
-    const d = await jget('https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon='+S.coords.lon+','+S.coords.lat, 15000);
-    const txt = JSON.stringify(d).toLowerCase();
+    const cands = [];
+    if(S.codeInsee){
+      cands.push('https://georisques.gouv.fr/api/v1/gaspar/risques?code_insee='+S.codeInsee+'&page=1&page_size=50');
+      cands.push('https://www.georisques.gouv.fr/api/v1/gaspar/risques?code_insee='+S.codeInsee+'&page=1&page_size=50');
+    }
+    cands.push('https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon='+S.coords.lon+','+S.coords.lat);
+    const r = await jfirst(cands, 20000);
+    const txt = JSON.stringify(r.d).toLowerCase();
     const inond = txt.includes('inondation'), argile = txt.includes('argile')||txt.includes('retrait'), poll = txt.includes('basol')||txt.includes('basias')||txt.includes('pollu');
     preremplir('inondation', inond); preremplir('argiles', argile); preremplir('pollution', poll);
     preremplir('sansRisque', !inond && !argile && !poll);
     const l=[]; if(inond)l.push('inondation'); if(argile)l.push('argiles'); if(poll)l.push('sites pollués');
     statut('ris','ok', l.length ? 'risques détectés : '+l.join(', ') : 'aucun risque majeur identifié');
     noter(l.length ? ('Risques recensés : '+l.join(', ')+'.') : 'Aucun risque majeur recensé.');
-  }catch(e){ statut('ris','ko', e.code||'échec'); echecs++; }
+  }catch(e){ statut('ris','ko', e.detail||e.code||'échec'); echecs++; }
 
   /* 6 — Commerces et transports */
   statut('poi','','interrogation…');
