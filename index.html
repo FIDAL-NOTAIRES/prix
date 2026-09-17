@@ -230,14 +230,32 @@ function initStatuts(){
   document.getElementById('statuts').innerHTML =
     BASES.map(b=>'<div class="stat" id="st-'+b.id+'"><b>'+b.nom+'</b> — en attente</div>').join('');
 }
-async function jget(url, ms=9000){
+async function jget(url, ms=12000){
   const ctl = new AbortController();
   const t = setTimeout(()=>ctl.abort(), ms);
   try{
     const r = await fetch(url, {signal:ctl.signal});
-    if(!r.ok) throw new Error(r.status);
+    if(!r.ok){ const e = new Error('HTTP '+r.status); e.code = 'erreur HTTP '+r.status; throw e; }
     return await r.json();
+  }catch(e){
+    if(e.name==='AbortError'){ const x = new Error('delai'); x.code = 'délai dépassé'; throw x; }
+    if(!e.code) e.code = 'appel refusé (réseau ou politique du site)';
+    throw e;
   } finally { clearTimeout(t); }
+}
+/* essaie plusieurs points d'entrée et renvoie le premier qui répond */
+async function jfirst(urls, ms){
+  const errs = [];
+  for(const u of urls){
+    try{ const d = await jget(u, ms); return {d:d, u:u}; }
+    catch(e){ errs.push(new URL(u).hostname+' : '+(e.code||e.message)); }
+  }
+  const e = new Error('toutes injoignables'); e.detail = errs.join(' — '); throw e;
+}
+/* lecture tolérante d'un champ quel que soit le nom exact renvoyé */
+function champ(o, noms){
+  for(const n of noms){ if(o[n]!==undefined && o[n]!==null && o[n]!=='') return o[n]; }
+  return undefined;
 }
 
 /* autocomplétion adresse */
@@ -267,10 +285,9 @@ async function interroger(){
   const q = document.getElementById('adr').value.trim();
   if(!q){ alert("Saisir d'abord une adresse."); return; }
   document.getElementById('bandeau').classList.remove('on');
-  let echecs = 0;
-  S.notes = [];
+  S.notes = []; let echecs = 0;
 
-  /* BAN */
+  /* 1 — Base adresse nationale */
   statut('ban','','interrogation…');
   if(!S.coords){
     try{
@@ -278,130 +295,140 @@ async function interroger(){
       if(d.features && d.features.length){
         S.coords = {lat:d.features[0].geometry.coordinates[1], lon:d.features[0].geometry.coordinates[0]};
         S.ville = d.features[0].properties.city||'';
+        S.codeInsee = d.features[0].properties.citycode||'';
       }
-    }catch(_){}
+    }catch(e){ statut('ban','ko', e.code||'échec'); echecs++; }
   }
-  if(S.coords){ statut('ban','ok','adresse localisée ('+S.coords.lat.toFixed(5)+', '+S.coords.lon.toFixed(5)+')'); }
-  else { statut('ban','ko','injoignable depuis cet écran'); echecs++; }
+  if(S.coords){
+    statut('ban','ok','adresse localisée ('+S.coords.lat.toFixed(5)+', '+S.coords.lon.toFixed(5)+')'+(S.codeInsee?' — commune '+S.codeInsee:''));
+  } else { statut('ban','ko','adresse non localisée'); finirEchec(++echecs); return; }
 
-  if(!S.coords){ finirEchec(echecs); return; }
-
-  /* Cadastre — contenance de la parcelle */
+  /* 2 — Cadastre */
   statut('cad','','interrogation…');
   try{
     const geo = encodeURIComponent(JSON.stringify({type:'Point',coordinates:[S.coords.lon,S.coords.lat]}));
-    const d = await jget('https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo);
-    const p = (d.features||[])[0];
+    const r = await jfirst([
+      'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo+'&source_ign=PCI',
+      'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo,
+      'https://apicarto.ign.fr/api/cadastre/parcelle?geom='+geo+'&source_ign=BDP'
+    ], 15000);
+    const p = (r.d.features||[])[0];
     if(p){
-      const c = p.properties.contenance||0;
-      S.parcelle = p.properties.section+' '+p.properties.numero+' — '+c.toLocaleString('fr-FR')+' m²';
+      const pr = p.properties||{};
+      const c = +champ(pr,['contenance','CONTENANCE'])||0;
+      S.parcelle = (pr.section||'')+' '+(pr.numero||'')+(c?' — '+c.toLocaleString('fr-FR')+' m²':'');
       statut('cad','ok','parcelle '+S.parcelle);
-      noter('Parcelle cadastrale '+S.parcelle);
-      if(S.type==='maison'){
-        preremplir('grandTerrain', c>=1200);
-        if(c>=1200) noter('Contenance supérieure à 1 200 m² : ligne « terrain de grande taille » proposée.');
-      }
-    } else { statut('cad','ko','aucune parcelle trouvée à ce point'); }
-  }catch(_){ statut('cad','ko','injoignable depuis cet écran'); echecs++; }
+      noter('Parcelle cadastrale '+S.parcelle+'.');
+      if(S.type==='maison' && c>=1200){ preremplir('grandTerrain', true); noter('Contenance supérieure à 1 200 m² : ligne « terrain de grande taille » proposée.'); }
+    } else { statut('cad','ko','aucune parcelle renvoyée à ce point'); }
+  }catch(e){ statut('cad','ko', e.detail||e.code||'échec'); echecs++; }
 
-  /* DVF */
+  /* 3 — Ventes enregistrées */
   statut('dvf','','interrogation…');
+  const sRef = +document.getElementById('surf').value||0;
   try{
-    const d = await jget('https://api.cquest.org/dvf?lat='+S.coords.lat+'&lon='+S.coords.lon+'&dist=700');
-    const cible = S.type==='maison' ? 'Maison' : 'Appartement';
-    const sRef = +document.getElementById('surf').value||0;
-    const proche = x => !sRef || (x.surface_relle_bati >= sRef*0.6 && x.surface_relle_bati <= sRef*1.6);
-    let brut = (d.resultats||[]).filter(x=>x.type_local===cible && x.valeur_fonciere>10000 && x.surface_relle_bati>9);
-    const cible2 = brut.filter(proche);
-    const cibleOk = cible2.length>=5;
-    const v = (cibleOk?cible2:brut)
-      .map(x=>({p: x.valeur_fonciere/x.surface_relle_bati, a:(x.date_mutation||'').slice(0,4)}))
-      .filter(x=>x.p>200 && x.p<35000);
-    if(v.length>=3){
-      const arr = v.map(x=>x.p).sort((a,b)=>a-b);
-      const med = arr[Math.floor(arr.length/2)];
+    const pt = "POINT("+S.coords.lon+" "+S.coords.lat+")";
+    const ods = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/demandes-de-valeurs-foncieres/records?limit=100&where="
+      + encodeURIComponent("within_distance(geolocalisation, geom'"+pt+"', 700m)");
+    const r = await jfirst([
+      'https://api.cquest.org/dvf?lat='+S.coords.lat+'&lon='+S.coords.lon+'&dist=700',
+      ods,
+      ods.replace('geolocalisation','geo_point')
+    ], 20000);
+    const brutSrc = r.d.resultats || r.d.results || r.d.records || [];
+    const brut = brutSrc.map(x=>{
+      const o = x.fields || x.record || x;
+      return {
+        tl: champ(o,['type_local','Type_local'])||'',
+        vf: +champ(o,['valeur_fonciere','Valeur_fonciere'])||0,
+        sb: +champ(o,['surface_relle_bati','surface_reelle_bati','Surface_reelle_bati'])||0,
+        voie: (champ(o,['adresse_nom_voie','Adresse_nom_voie'])||'')+'',
+        an: (champ(o,['date_mutation','Date_mutation'])||'')+''
+      };
+    }).filter(x=>x.tl===(S.type==='maison'?'Maison':'Appartement') && x.vf>10000 && x.sb>9);
+
+    const proche = x => !sRef || (x.sb>=sRef*0.6 && x.sb<=sRef*1.6);
+    const restreint = brut.filter(proche);
+    const cibleOk = restreint.length>=5;
+    const jeu = (cibleOk?restreint:brut).map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
+
+    if(jeu.length>=3){
+      const med = jeu[Math.floor(jeu.length/2)];
       document.getElementById('pm2').value = Math.round(med/10)*10;
       document.getElementById('dvfInfo').textContent =
-        v.length+' ventes comparables retenues dans un rayon de 700 m'
-        +(cibleOk?(' et sur une surface voisine ('+Math.round(sRef*0.6)+' à '+Math.round(sRef*1.6)+' m²)'):' (toutes surfaces, faute de comparables de taille voisine)')
-        +' — médiane '+Math.round(med).toLocaleString('fr-FR')
-        +' €/m², fourchette '+Math.round(arr[Math.floor(arr.length*0.25)]).toLocaleString('fr-FR')
-        +' à '+Math.round(arr[Math.floor(arr.length*0.75)]).toLocaleString('fr-FR')+' €/m².';
-      statut('dvf','ok',v.length+' ventes comparables, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m²');
-      noter(v.length+' ventes comparables (700 m), médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m².');
-      preremplir('rarete', v.length<6);
-      if(v.length<6) noter('Moins de six comparables : ligne « rareté du produit » proposée.');
-      const voie = (document.getElementById('adr').value.toLowerCase().replace(/^[0-9a-z]*\s+/,'').split(',')[0]||'').trim();
-      const rue = brut.filter(x=>(x.adresse_nom_voie||'').toLowerCase().includes(voie.slice(0,12)) && x.surface_relle_bati>9)
-                      .map(x=>x.valeur_fonciere/x.surface_relle_bati).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
+        jeu.length+' ventes comparables dans un rayon de 700 m'
+        + (cibleOk?(' et sur une surface voisine ('+Math.round(sRef*0.6)+' à '+Math.round(sRef*1.6)+' m²)'):' (toutes surfaces, faute de comparables de taille voisine)')
+        + ' — médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m², quartiles '
+        + Math.round(jeu[Math.floor(jeu.length*0.25)]).toLocaleString('fr-FR')+' à '
+        + Math.round(jeu[Math.floor(jeu.length*0.75)]).toLocaleString('fr-FR')+' €/m². Source : '+new URL(r.u).hostname;
+      statut('dvf','ok', jeu.length+' ventes, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² ('+new URL(r.u).hostname+')');
+      noter(jeu.length+' ventes comparables retenues, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m².');
+      if(jeu.length<6){ preremplir('rarete', true); noter('Moins de six comparables : ligne « rareté du produit » proposée.'); }
+      const voie = (q.toLowerCase().replace(/^[0-9a-z]*\s+/,'').split(',')[0]||'').trim().slice(0,12);
+      const rue = brut.filter(x=>voie && x.voie.toLowerCase().includes(voie)).map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
       if(rue.length>=3){
-        const medRue = rue[Math.floor(rue.length/2)];
-        const ecart = medRue/med-1;
+        const medRue = rue[Math.floor(rue.length/2)], ecart = medRue/med-1;
         noter('Médiane de la voie : '+Math.round(medRue).toLocaleString('fr-FR')+' €/m², soit '+(ecart>0?'+':'')+(ecart*100).toFixed(0)+' % par rapport au secteur.');
         preremplir('prestige', ecart>=0.15);
         preremplir('nonCotee', ecart<=-0.15);
       }
-      const sBien = +document.getElementById('surf').value||0;
-      if(S.type==='maison' && sBien>200){
-        preremplir('grandeSurface', true);
-        noter('Surface supérieure à 200 m² : ligne de moins-value de très grande surface proposée.');
-      }
+      if(S.type==='maison' && sRef>200){ preremplir('grandeSurface', true); noter('Surface supérieure à 200 m² : ligne de moins-value de très grande surface proposée.'); }
     } else {
-      statut('dvf','ko','moins de trois ventes comparables, saisie manuelle du prix au m²');
-      document.getElementById('dvfInfo').textContent = 'Trop peu de ventes comparables sur le secteur : saisir le prix au m² à dire d\'expert.';
+      statut('dvf','ko','réponse obtenue mais moins de trois ventes exploitables');
+      document.getElementById('dvfInfo').textContent = 'Trop peu de ventes comparables : saisir le prix au m² à dire d\'expert.';
     }
-  }catch(_){ statut('dvf','ko','injoignable depuis cet écran'); echecs++; }
+  }catch(e){ statut('dvf','ko', e.detail||e.code||'échec'); echecs++; }
 
-  /* DPE */
+  /* 4 — Diagnostics énergétiques */
   statut('dpe','','interrogation…');
   try{
-    const u='https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines?size=20&select=Etiquette_DPE,Date_établissement_DPE,Type_énergie_principale_chauffage,Surface_habitable_logement&geo_distance='+S.coords.lon+','+S.coords.lat+',150';
-    const d = await jget(u);
-    const r = (d.results||[]).filter(x=>x.Etiquette_DPE);
-    if(r.length){
-      const et = r[0].Etiquette_DPE;
-      statut('dpe','ok', r.length+' diagnostic(s) à moins de 150 m — étiquette la plus proche : '+et);
-      noter('Étiquette énergétique relevée à proximité immédiate : '+et+' ('+r.length+' diagnostic(s) à moins de 150 m).');
-      preremplir('dpeBon', ['A','B'].includes(et));
-      preremplir('dpeMauvais', ['F','G'].includes(et));
-      const ch = (r[0].Type_énergie_principale_chauffage||'').toLowerCase();
-      preremplir('fioul', ch.includes('fioul'));
-    } else { statut('dpe','ko','aucun diagnostic géolocalisé à proximité'); }
-  }catch(_){ statut('dpe','ko','injoignable depuis cet écran'); echecs++; }
+    const base = 'https://data.ademe.fr/data-fair/api/v1/datasets/';
+    const fin = '/lines?size=20&geo_distance='+S.coords.lon+','+S.coords.lat+',200';
+    const r = await jfirst([base+'dpe-v2-logements-existants'+fin, base+'dpe03existant'+fin, base+'dpe-france'+fin], 15000);
+    const res = r.d.results||[];
+    const et = res.map(x=>champ(x,['Etiquette_DPE','etiquette_dpe','classe_consommation_energie'])).filter(Boolean);
+    if(et.length){
+      statut('dpe','ok', et.length+' diagnostic(s) à moins de 200 m — étiquette la plus proche : '+et[0]);
+      noter('Étiquette énergétique relevée à proximité immédiate : '+et[0]+' ('+et.length+' diagnostic(s) à moins de 200 m).');
+      preremplir('dpeBon', ['A','B'].includes(et[0]));
+      preremplir('dpeMauvais', ['F','G'].includes(et[0]));
+      const ch = (champ(res[0],['Type_énergie_principale_chauffage','type_energie_principale_chauffage'])||'').toString().toLowerCase();
+      if(ch.includes('fioul')){ preremplir('fioul', true); noter('Chauffage au fioul relevé au diagnostic le plus proche.'); }
+    } else { statut('dpe','ko','aucun diagnostic géolocalisé à moins de 200 m'); }
+  }catch(e){ statut('dpe','ko', e.detail||e.code||'échec'); echecs++; }
 
-  /* Géorisques */
+  /* 5 — Risques */
   statut('ris','','interrogation…');
   try{
-    const d = await jget('https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon='+S.coords.lon+','+S.coords.lat);
+    const d = await jget('https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon='+S.coords.lon+','+S.coords.lat, 15000);
     const txt = JSON.stringify(d).toLowerCase();
-    const inond = txt.includes('inondation');
-    const argile = txt.includes('argile') || txt.includes('retrait');
-    const poll = txt.includes('basol') || txt.includes('basias') || txt.includes('pollu');
-    preremplir('inondation', inond);
-    preremplir('argiles', argile);
-    preremplir('pollution', poll);
+    const inond = txt.includes('inondation'), argile = txt.includes('argile')||txt.includes('retrait'), poll = txt.includes('basol')||txt.includes('basias')||txt.includes('pollu');
+    preremplir('inondation', inond); preremplir('argiles', argile); preremplir('pollution', poll);
     preremplir('sansRisque', !inond && !argile && !poll);
     const l=[]; if(inond)l.push('inondation'); if(argile)l.push('argiles'); if(poll)l.push('sites pollués');
     statut('ris','ok', l.length ? 'risques détectés : '+l.join(', ') : 'aucun risque majeur identifié');
-    noter(l.length ? ('Risques recensés sur la commune : '+l.join(', ')+'.') : 'Aucun risque majeur recensé sur la commune.');
-  }catch(_){ statut('ris','ko','injoignable depuis cet écran'); echecs++; }
+    noter(l.length ? ('Risques recensés : '+l.join(', ')+'.') : 'Aucun risque majeur recensé.');
+  }catch(e){ statut('ris','ko', e.code||'échec'); echecs++; }
 
-  /* Commerces et transports (OpenStreetMap) */
+  /* 6 — Commerces et transports */
   statut('poi','','interrogation…');
   try{
-    const q = '[out:json][timeout:20];('
-      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[shop];'
-      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[amenity~"^(school|pharmacy|bakery|supermarket)$"];'
-      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[public_transport=station];'
-      + 'nwr(around:600,'+S.coords.lat+','+S.coords.lon+')[highway=bus_stop];'
-      + ');out ids;';
-    const d = await jget('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q), 20000);
-    const n = (d.elements||[]).length;
+    const c = S.coords.lat+','+S.coords.lon;
+    const req = '[out:json][timeout:25];('
+      + 'nwr(around:600,'+c+')[shop];'
+      + 'nwr(around:600,'+c+')[amenity~"^(school|pharmacy|supermarket|bakery)$"];'
+      + 'nwr(around:600,'+c+')[public_transport=station];'
+      + 'nwr(around:600,'+c+')[highway=bus_stop];);out ids;';
+    const r = await jfirst([
+      'https://overpass-api.de/api/interpreter?data='+encodeURIComponent(req),
+      'https://overpass.kumi.systems/api/interpreter?data='+encodeURIComponent(req)
+    ], 25000);
+    const n = (r.d.elements||[]).length;
     statut('poi','ok', n+' commerces, écoles ou arrêts dans un rayon de 600 m');
-    noter(n+' commerces, écoles ou points d\'arrêt recensés dans un rayon de 600 m.');
+    noter(n+" commerces, écoles ou points d'arrêt recensés dans un rayon de 600 m.");
     preremplir('proximite', n>=15);
     preremplir('eloignement', n<=2);
-  }catch(_){ statut('poi','ko','injoignable depuis cet écran'); echecs++; }
+  }catch(e){ statut('poi','ko', e.detail||e.code||'échec'); echecs++; }
 
   finirEchec(echecs);
   const c = document.getElementById('carnet');
@@ -412,11 +439,11 @@ async function interroger(){
   construire(); rendre();
 }
 function finirEchec(n){
+  const b = document.getElementById('bandeau');
   if(n>0){
-    const b = document.getElementById('bandeau');
-    b.textContent = "Certaines bases n'ont pas répondu depuis cet écran. L'aperçu publié bloque les appels vers des sites extérieurs : une fois l'outil déployé sur le serveur du cabinet, ces interrogations fonctionnent normalement. Les lignes concernées restent à renseigner à la main.";
+    b.textContent = n+" base(s) n'ont pas répondu : le détail de l'erreur figure en rouge à côté de chaque ligne ci-dessus. Les facteurs correspondants restent à renseigner à la main, le reste de l'estimation n'est pas affecté.";
     b.classList.add('on');
-  }
+  } else { b.classList.remove('on'); }
 }
 
 /* correspondance entre une donnée obtenue et une ligne du questionnaire */
