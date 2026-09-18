@@ -142,6 +142,9 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
 .champs span{font-size:12px;padding:3px 9px;border-radius:20px;background:var(--auto);color:var(--autoT)}
 .champs span.vide{background:var(--manuel);color:var(--manuelT)}
 .ecart{font-family:var(--titre);font-size:17px}
+.boutonsAnnonce{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.boutonsAnnonce button{flex:1;min-width:170px}
+@media(max-width:620px){.depot{padding:16px 12px}.vign{flex-direction:column}.vign img{max-width:100%}}
 .mode{display:inline-block;font-size:11px;padding:2px 9px;border-radius:20px;background:var(--cyan);color:var(--nuit);font-weight:600;margin-bottom:4px}
 </style>
 </head>
@@ -160,9 +163,14 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
     <p class="sous">Facultatif. Déposer ou coller la capture d'écran de l'annonce : les champs utiles en sont extraits et reportés ci-dessous, où ils restent corrigeables.</p>
     <div class="depot" id="depot" tabindex="0">
       <b>Déposer la capture ici</b>
-      la coller avec Ctrl+V, ou cliquer pour choisir un fichier
+      la coller avec Ctrl+V, ou toucher pour choisir une image
+    </div>
+    <div class="boutonsAnnonce">
+      <button class="btn sec" id="btnGalerie">Choisir une capture</button>
+      <button class="btn sec" id="btnPhoto">Photographier l'annonce</button>
     </div>
     <input type="file" id="fichierAnnonce" accept="image/*" style="display:none">
+    <input type="file" id="photoAnnonce" accept="image/*" capture="environment" style="display:none">
     <div id="annonceEtat" class="mini" style="margin-top:10px"></div>
     <div id="annonceVign"></div>
     <div class="grid2" style="margin-top:14px">
@@ -1254,29 +1262,65 @@ function rendreEcartAnnonce(retenu){
   el.textContent = euro(d) + ' (' + pct(d/p) + ')';
   el.className = 'ecart ' + (d<0 ? 'neg' : 'pos');
 }
+function enBase64(fichier){
+  return new Promise((ok,ko)=>{
+    const r = new FileReader();
+    r.onload = ()=>ok(String(r.result).split(',')[1]);
+    r.onerror = ()=>ko(new Error('lecture impossible'));
+    r.readAsDataURL(fichier);
+  });
+}
+/* Une photo prise au téléphone pèse couramment plusieurs mégaoctets, bien au-delà
+   de ce que la fonction serveur accepte. On la ramène donc à une définition
+   suffisante pour la lecture du texte avant de l'envoyer. */
+async function reduireImage(fichier, maxCote){
+  const url = URL.createObjectURL(fichier);
+  try{
+    const img = await new Promise((ok,ko)=>{
+      const i = new Image();
+      i.onload = ()=>ok(i);
+      i.onerror = ()=>ko(new Error('image illisible'));
+      i.src = url;
+    });
+    const grand = Math.max(img.naturalWidth||img.width, img.naturalHeight||img.height);
+    if(grand <= maxCote && fichier.size <= 1200000)
+      return {b64: await enBase64(fichier), format: fichier.type, reduite:false};
+    const k = Math.min(1, maxCote/grand);
+    const c = document.createElement('canvas');
+    c.width  = Math.max(1, Math.round((img.naturalWidth||img.width)*k));
+    c.height = Math.max(1, Math.round((img.naturalHeight||img.height)*k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const d = c.toDataURL('image/jpeg', 0.85);
+    if(!d || d.length < 200) throw new Error('conversion vide');
+    return {b64: d.split(',')[1], format:'image/jpeg', reduite:true, l:c.width, h:c.height};
+  } finally { URL.revokeObjectURL(url); }
+}
 async function lireCapture(fichier){
   const et = document.getElementById('annonceEtat');
-  if(!fichier || !/^image\//.test(fichier.type||'')){ et.textContent = "Le fichier déposé n'est pas une image."; return; }
-  if(fichier.size > 5*1024*1024){ et.textContent = "Capture trop lourde (plus de 5 Mo) : n'en conserver que la partie utile."; return; }
-  et.textContent = 'Lecture de la capture en cours…';
+  if(!fichier || !/^image\//.test(fichier.type||'')){ et.textContent = "Le fichier choisi n'est pas une image."; return; }
+  et.textContent = 'Préparation de l\'image…';
   document.getElementById('annonceVign').innerHTML = '';
-  let b64;
-  try{
-    b64 = await new Promise((ok,ko)=>{
-      const r = new FileReader();
-      r.onload = ()=>ok(String(r.result).split(',')[1]);
-      r.onerror = ()=>ko(new Error('lecture impossible'));
-      r.readAsDataURL(fichier);
-    });
-  }catch(_){ et.textContent = "La capture n'a pas pu être lue sur ce poste."; return; }
+  let img;
+  try{ img = await reduireImage(fichier, 1600); }
+  catch(_){
+    /* si la réduction échoue, on tente l'envoi tel quel */
+    try{ img = {b64: await enBase64(fichier), format: fichier.type, reduite:false}; }
+    catch(__){ et.textContent = "L'image n'a pas pu être lue sur cet appareil."; return; }
+  }
+  if(img.b64.length > 5000000){
+    et.textContent = "Image trop lourde même après réduction : n'en garder que la partie utile.";
+    return;
+  }
+  et.textContent = 'Lecture de la capture en cours…'
+    + (img.reduite ? ' (image ramenée à '+img.l+' × '+img.h+' points)' : '');
   try{
     const r = await fetch('/api/annonce', {
       method:'POST', headers:{'content-type':'application/json'},
-      body: JSON.stringify({image:b64, format:fichier.type})
+      body: JSON.stringify({image:img.b64, format:img.format})
     });
     const d = await r.json();
     if(d.erreur){ et.textContent = d.erreur; return; }
-    appliquerAnnonce(d.champs||{}, b64, fichier.type);
+    appliquerAnnonce(d.champs||{}, img.b64, img.format);
   }catch(e){ et.textContent = "Le serveur n'a pas répondu : " + (e.message||''); }
 }
 function appliquerAnnonce(c, b64, format){
@@ -1400,9 +1444,13 @@ document.addEventListener('click', e=>{ if(!e.target.closest('.rel')) document.g
 
 /* capture d'annonce : dépôt, collage ou choix de fichier */
 const depot = document.getElementById('depot'), fAnn = document.getElementById('fichierAnnonce');
+const fPhoto = document.getElementById('photoAnnonce');
 depot.onclick = ()=>fAnn.click();
 depot.onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fAnn.click(); } };
 fAnn.onchange = ()=>{ if(fAnn.files && fAnn.files[0]) lireCapture(fAnn.files[0]); fAnn.value=''; };
+fPhoto.onchange = ()=>{ if(fPhoto.files && fPhoto.files[0]) lireCapture(fPhoto.files[0]); fPhoto.value=''; };
+document.getElementById('btnGalerie').onclick = ()=>fAnn.click();
+document.getElementById('btnPhoto').onclick = ()=>fPhoto.click();
 ['dragenter','dragover'].forEach(n=>depot.addEventListener(n, e=>{ e.preventDefault(); depot.classList.add('survol'); }));
 ['dragleave','drop'].forEach(n=>depot.addEventListener(n, e=>{ e.preventDefault(); depot.classList.remove('survol'); }));
 depot.addEventListener('drop', e=>{
