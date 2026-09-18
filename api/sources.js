@@ -10,6 +10,7 @@
  *   /api/sources?type=dvf&insee=59368&annee=2024&lat=50.65&lon=3.07&r=700
  *   /api/sources?type=poi&lat=50.65&lon=3.07&r=600
  *   /api/sources?type=loyer&insee=59368&bien=maison
+ *   /api/sources?type=iris&lat=50.65&lon=3.07
  */
 
 function distM(la1, lo1, la2, lo2) {
@@ -34,7 +35,86 @@ function decoupeSep(l, sep) {
 }
 function decoupe(l) { return decoupeSep(l, ','); }
 
-async function ventes(insee, annee, lat, lon, rayon) {
+function mediane(a) {
+  if (!a.length) return null;
+  const s = a.slice().sort((x, y) => x - y);
+  return s[Math.floor(s.length / 2)];
+}
+
+/* ---------- Quartier au sens IRIS de l'INSEE ----------
+   La maille fine retenue n'est pas la section cadastrale mais le quartier IRIS,
+   plus proche de la réalité du marché. Les contours sont publiés par l'IGN ;
+   les noms de couche ayant changé au fil des versions de la Géoplateforme, on
+   en essaie plusieurs et l'on renonce proprement si aucune ne répond. */
+
+const COUCHES_IRIS = [
+  'STATISTICALUNITS.IRIS:iris',
+  'CONTOURS-IRIS:contours_iris',
+  'STATISTICALUNITS.IRIS:contours_iris'
+];
+const cacheIris = new Map();   /* "lat,lon" arrondi -> contour ; survit aux appels à chaud */
+
+function pointDansAnneau(lat, lon, anneau) {
+  /* algorithme du lancer de rayon ; les coordonnées sont en [lon, lat] */
+  let dedans = false;
+  for (let i = 0, j = anneau.length - 1; i < anneau.length; j = i++) {
+    const xi = anneau[i][0], yi = anneau[i][1];
+    const xj = anneau[j][0], yj = anneau[j][1];
+    const coupe = ((yi > lat) !== (yj > lat)) &&
+                  (lon < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
+    if (coupe) dedans = !dedans;
+  }
+  return dedans;
+}
+function pointDansGeometrie(lat, lon, geom) {
+  if (!geom) return false;
+  const polys = geom.type === 'MultiPolygon' ? geom.coordinates
+              : geom.type === 'Polygon' ? [geom.coordinates] : [];
+  for (const poly of polys) {
+    if (!poly.length) continue;
+    if (!pointDansAnneau(lat, lon, poly[0])) continue;
+    let trou = false;
+    for (let k = 1; k < poly.length; k++) if (pointDansAnneau(lat, lon, poly[k])) { trou = true; break; }
+    if (!trou) return true;
+  }
+  return false;
+}
+
+async function contourIris(lat, lon) {
+  const cle = (+lat).toFixed(4) + ',' + (+lon).toFixed(4);
+  if (cacheIris.has(cle)) return cacheIris.get(cle);
+  const d = 0.004;
+  const bbox = [lat - d, lon - d, lat + d, lon + d].join(',') + ',EPSG:4326';
+  const essais = [];
+  for (const couche of COUCHES_IRIS) {
+    const u = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature'
+      + '&outputFormat=application/json&count=30&SRSNAME=EPSG:4326&TYPENAMES=' + encodeURIComponent(couche)
+      + '&BBOX=' + encodeURIComponent(bbox);
+    try {
+      const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
+      if (!rep.ok) { essais.push(couche + ' : HTTP ' + rep.status); continue; }
+      const j = await rep.json();
+      const f = (j.features || []).find(x => pointDansGeometrie(+lat, +lon, x.geometry));
+      if (!f) { essais.push(couche + ' : aucun quartier ne contient ce point'); continue; }
+      const p = f.properties || {};
+      const res = {
+        code: p.code_iris || p.CODE_IRIS || p.iris || p.dcomiris || '',
+        nom: p.nom_iris || p.NOM_IRIS || p.libiris || '',
+        commune: p.nom_com || p.NOM_COM || p.libcom || '',
+        typologie: p.typ_iris || p.TYP_IRIS || '',
+        couche,
+        geometry: f.geometry
+      };
+      cacheIris.set(cle, res);
+      return res;
+    } catch (e) { essais.push(couche + ' : ' + e.message); }
+  }
+  const echec = { erreur: essais.join(' — ') };
+  cacheIris.set(cle, echec);
+  return echec;
+}
+
+async function ventes(insee, annee, lat, lon, rayon, avecIris) {
   const dep = insee.startsWith('97') ? insee.slice(0, 3) : insee.slice(0, 2);
   const url = `https://files.data.gouv.fr/geo-dvf/latest/csv/${annee}/communes/${dep}/${insee}.csv`;
   const rep = await fetch(url, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
@@ -77,18 +157,50 @@ async function ventes(insee, annee, lat, lon, rayon) {
     }
   }
 
+  /* Le quartier IRIS n'est chargé qu'une fois par instance : point dans polygone
+     ensuite, sur les seules ventes géolocalisées. */
+  const iris = avecIris ? await contourIris(+lat, +lon) : null;
+  const geomIris = iris && iris.geometry ? iris.geometry : null;
+
   const out = [];
   let multi = 0;
+  /* Tendance : médianes annuelles du prix au m², à la maille de la commune
+     entière et à celle du quartier, sur toutes les ventes exploitables. */
+  const pm2Commune = { Maison: [], Appartement: [] };
+  const pm2Iris = { Maison: [], Appartement: [] };
+
   for (const m of mut.values()) {
     if (m.locaux.length === 0) continue;                       /* terrain nu */
     const bati = m.locaux.filter(x => x.tl === 'Maison' || x.tl === 'Appartement');
     if (bati.length !== 1) { multi++; continue; }               /* vente multi-lots : non interprétable */
     const p = bati[0];
     if (p.sb < 9) continue;
+
+    const pm2 = m.vf / p.sb;
+    if (pm2 > 200 && pm2 < 35000) {
+      pm2Commune[p.tl].push(pm2);
+      if (geomIris && isFinite(m.lat) && pointDansGeometrie(m.lat, m.lon, geomIris)) pm2Iris[p.tl].push(pm2);
+    }
+
     if (distM(m.lat, m.lon, +lat, +lon) > +rayon) continue;
     out.push({ vf: m.vf, sb: p.sb, tl: p.tl, pi: p.pi, voie: m.voie, st: m.terrain, lat: m.lat, lon: m.lon, an: m.an });
   }
-  return { annee, ventes: out, mutations: mut.size, ecartees: multi };
+
+  const resume = (src) => ({
+    Maison: { n: src.Maison.length, med: mediane(src.Maison) },
+    Appartement: { n: src.Appartement.length, med: mediane(src.Appartement) }
+  });
+
+  const rep2 = {
+    annee, ventes: out, mutations: mut.size, ecartees: multi,
+    commune: resume(pm2Commune)
+  };
+  if (avecIris) {
+    rep2.iris = iris && iris.erreur
+      ? { erreur: iris.erreur }
+      : { code: iris.code, nom: iris.nom, commune: iris.commune, resume: resume(pm2Iris) };
+  }
+  return rep2;
 }
 
 /* Commerces, équipements et transports.
@@ -263,8 +375,14 @@ export default async function handler(req, res) {
       const annee = String(q.annee || '');
       if (!/^[0-9AB]{5}$/i.test(insee)) return res.status(400).json({ erreur: 'code commune invalide' });
       if (!/^20\d\d$/.test(annee)) return res.status(400).json({ erreur: 'année invalide' });
-      const d = await ventes(insee, annee, q.lat, q.lon, q.r || 700);
+      const d = await ventes(insee, annee, q.lat, q.lon, q.r || 700, q.iris === '1');
       return res.status(200).json(d);
+    }
+    if (type === 'iris') {
+      res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate=2592000');
+      const d = await contourIris(+q.lat, +q.lon);
+      if (d.erreur) return res.status(200).json({ erreur: d.erreur });
+      return res.status(200).json({ code: d.code, nom: d.nom, commune: d.commune, typologie: d.typologie, couche: d.couche });
     }
     if (type === 'loyer') {
       const insee = String(q.insee || '').toUpperCase();
