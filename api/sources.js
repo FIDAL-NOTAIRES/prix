@@ -9,6 +9,7 @@
  * Appels :
  *   /api/sources?type=dvf&insee=59368&annee=2024&lat=50.65&lon=3.07&r=700
  *   /api/sources?type=poi&lat=50.65&lon=3.07&r=600
+ *   /api/sources?type=loyer&insee=59368&bien=maison
  */
 
 function distM(la1, lo1, la2, lo2) {
@@ -19,18 +20,19 @@ function distM(la1, lo1, la2, lo2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-function decoupe(l) {
+function decoupeSep(l, sep) {
   const r = [];
   let cur = '', q = false;
   for (let i = 0; i < l.length; i++) {
     const ch = l[i];
     if (ch === '"') { q = !q; continue; }
-    if (ch === ',' && !q) { r.push(cur); cur = ''; continue; }
+    if (ch === sep && !q) { r.push(cur); cur = ''; continue; }
     cur += ch;
   }
   r.push(cur);
   return r;
 }
+function decoupe(l) { return decoupeSep(l, ','); }
 
 async function ventes(insee, annee, lat, lon, rayon) {
   const dep = insee.startsWith('97') ? insee.slice(0, 3) : insee.slice(0, 2);
@@ -159,6 +161,95 @@ async function pointsInteret(lat, lon, rayon) {
   }
 }
 
+/* ---------- Loyers d'annonce : carte des loyers (ANIL / DGALN) ----------
+   Fichier national par commune, un jeu par millésime et un fichier par type de
+   bien. Les adresses de téléchargement changent d'un millésime à l'autre : on
+   les demande au catalogue plutôt que de les inscrire en dur, et on retombe sur
+   le millésime précédent si le plus récent n'est pas exploitable.
+   Les loyers publiés sont des loyers d'ANNONCE, exprimés CHARGES COMPRISES ;
+   l'abattement de retour au hors-charges est appliqué côté page. */
+
+const MILLESIMES = ['2025', '2024', '2023'];
+const cacheLoyers = new Map();   /* type de bien -> { millesime, idx } ; survit aux appels à chaud */
+
+async function ressourcesLoyers(annee) {
+  const u = 'https://www.data.gouv.fr/api/1/datasets/'
+          + 'carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-' + annee + '/';
+  const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
+  if (!rep.ok) throw new Error('catalogue ' + annee + ' : HTTP ' + rep.status);
+  const d = await rep.json();
+  return (d.resources || []).filter(r => /csv/i.test(r.format || '') || /\.csv/i.test(r.url || ''));
+}
+
+function choisirRessource(res, bien) {
+  const t = r => ((r.title || '') + ' ' + (r.url || '')).toLowerCase();
+  if (bien === 'maison') return res.find(r => /maison/.test(t(r))) || null;
+  /* appartement : on veut le fichier toutes typologies, non les déclinaisons par nombre de pièces */
+  const ap = res.filter(r => /appart/.test(t(r)));
+  return ap.find(r => !/(1\s*-?\s*2|3\s*pi|pieces|pièces|typologie)/.test(t(r))) || ap[0] || null;
+}
+
+/* Les intitulés de colonnes ont varié d'un millésime à l'autre : on les repère
+   par motif plutôt que par position. */
+function analyseCsv(txt) {
+  const lignes = txt.split(/\r?\n/);
+  if (lignes.length < 2) throw new Error('fichier de loyers vide');
+  const sep = (lignes[0].match(/;/g) || []).length > (lignes[0].match(/,/g) || []).length ? ';' : ',';
+  const ent = lignes[0].split(sep).map(x => x.replace(/^"|"$/g, '').trim());
+  const ou = re => ent.findIndex(x => re.test(x));
+  const iIns = ou(/insee/i);
+  let   iLoy = ou(/loypred/i);
+  if (iLoy < 0) iLoy = ou(/loy.*m2|loyer/i);
+  const iLib = ou(/libgeo|nom_?com|commune/i);
+  const iBas = ou(/lwr|_inf|borne_?inf/i);
+  const iHau = ou(/upr|_sup|borne_?sup/i);
+  const iTyp = ou(/typpred|type_?pred/i);
+  const iNb  = ou(/nbobs/i);
+  if (iIns < 0 || iLoy < 0) throw new Error('colonnes inattendues : ' + ent.slice(0, 12).join(' | '));
+
+  const nb = v => { const n = parseFloat(String(v == null ? '' : v).replace(/"/g, '').replace(',', '.')); return isFinite(n) ? n : null; };
+  const tx = v => String(v == null ? '' : v).replace(/"/g, '').trim();
+  const idx = new Map();
+  for (let k = 1; k < lignes.length; k++) {
+    const l = lignes[k];
+    if (!l) continue;
+    const c = l.indexOf('"') < 0 ? l.split(sep) : decoupeSep(l, sep);
+    const ins = tx(c[iIns]).toUpperCase();
+    if (ins.length < 4) continue;
+    const loy = nb(c[iLoy]);
+    if (loy === null || loy <= 0) continue;
+    idx.set(ins.padStart(5, '0'), {
+      loyer: loy,
+      commune: iLib >= 0 ? tx(c[iLib]) : '',
+      bas: iBas >= 0 ? nb(c[iBas]) : null,
+      haut: iHau >= 0 ? nb(c[iHau]) : null,
+      typpred: iTyp >= 0 ? tx(c[iTyp]) : '',
+      nbobs: iNb >= 0 ? nb(c[iNb]) : null
+    });
+  }
+  if (!idx.size) throw new Error('aucune commune lue dans le fichier de loyers');
+  return idx;
+}
+
+async function loyers(insee, bien) {
+  const enCache = cacheLoyers.get(bien);
+  if (enCache) return { millesime: enCache.millesime, ligne: enCache.idx.get(insee) || null };
+
+  let dernier = null;
+  for (const annee of MILLESIMES) {
+    try {
+      const r = choisirRessource(await ressourcesLoyers(annee), bien);
+      if (!r) { dernier = new Error('aucun fichier ' + bien + ' en ' + annee); continue; }
+      const rep = await fetch(r.url, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
+      if (!rep.ok) { dernier = new Error('fichier ' + annee + ' : HTTP ' + rep.status); continue; }
+      const idx = analyseCsv(await rep.text());
+      cacheLoyers.set(bien, { millesime: annee, idx });
+      return { millesime: annee, ligne: idx.get(insee) || null };
+    } catch (e) { dernier = e; }
+  }
+  throw dernier || new Error('carte des loyers indisponible');
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800');
@@ -174,6 +265,22 @@ export default async function handler(req, res) {
       if (!/^20\d\d$/.test(annee)) return res.status(400).json({ erreur: 'année invalide' });
       const d = await ventes(insee, annee, q.lat, q.lon, q.r || 700);
       return res.status(200).json(d);
+    }
+    if (type === 'loyer') {
+      const insee = String(q.insee || '').toUpperCase();
+      const bien = q.bien === 'appartement' ? 'appartement' : 'maison';
+      if (!/^[0-9AB]{5}$/i.test(insee)) return res.status(400).json({ erreur: 'code commune invalide' });
+      res.setHeader('Cache-Control', 's-maxage=604800, stale-while-revalidate=2592000');
+      const d = await loyers(insee, bien);
+      if (!d.ligne) return res.status(200).json({ millesime: d.millesime, bien, loyer: null, erreur: 'commune absente du fichier ' + d.millesime });
+      return res.status(200).json({
+        millesime: d.millesime, bien, insee,
+        commune: d.ligne.commune,
+        loyer: d.ligne.loyer,           /* €/m²/mois, CHARGES COMPRISES */
+        bas: d.ligne.bas, haut: d.ligne.haut, nbobs: d.ligne.nbobs,
+        estime: !!(d.ligne.typpred && !/commune/i.test(d.ligne.typpred)),
+        source: "Carte des loyers (ANIL / DGALN) — loyers d'annonce charges comprises"
+      });
     }
     if (type === 'poi') {
       res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate=2592000');
