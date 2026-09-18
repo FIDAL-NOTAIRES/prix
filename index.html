@@ -93,6 +93,10 @@ details[open]>summary::before{content:"▾ "}
 .jauge i{position:absolute;top:0;bottom:0;background:var(--canard)}
 .jauge i.n{background:var(--carmin)}
 .mini{font-size:11.5px;color:var(--doux)}
+.encadre{background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.encadre .tauxM{font-family:var(--titre);font-size:30px;color:var(--canard);margin:2px 0 2px;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;margin:6px 0 2px;accent-color:var(--canard)}
+.molette b{font-variant-numeric:tabular-nums;color:var(--canard);font-size:15px}
 .stat{font-size:12px;padding:3px 0;color:var(--doux)}
 .stat b{font-weight:600}
 .ok{color:var(--autoT)} .ko{color:var(--carmin)}
@@ -166,7 +170,31 @@ footer{padding:16px 22px;color:var(--doux);font-size:12px;text-align:center}
   </div>
 
   <div class="carte">
-    <h2>3. Le questionnaire</h2>
+    <h2>3. Posture investisseur</h2>
+    <p class="sous">Rendement brut : loyer hors charges annuel rapporté au prix. Sert à chiffrer, face au vendeur, l'effort qu'un investisseur exigerait.</p>
+    <div class="encadre">
+      <div class="mini">Taux de rendement du marché — commune</div>
+      <p class="tauxM" id="invMarche">—</p>
+      <div class="mini" id="invMarcheD">Loyers non interrogés : lancer l'interrogation des bases publiques.</div>
+    </div>
+    <div class="molette">
+      <label class="f" for="invTaux">Rendement attendu — <b id="invTauxL">—</b></label>
+      <input type="range" id="invTaux" min="2" max="18" step="0.5" value="6">
+      <div class="mini" style="display:flex;justify-content:space-between"><span>2 %</span><span>18 %</span></div>
+    </div>
+    <div style="margin-top:12px">
+      <div class="ligne"><span>Loyer de marché hors charges</span><span id="invLoyer">—</span></div>
+      <div class="ligne"><span>Loyer annuel du bien</span><span id="invAnnuel">—</span></div>
+      <div class="ligne"><span>Prix à ce rendement</span><span id="invPrix">—</span></div>
+      <div class="ligne"><span>Écart / valeur retenue</span><span id="invEcart">—</span></div>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn sec" id="invReset">Revenir au taux de marché</button>
+    </div>
+  </div>
+
+  <div class="carte">
+    <h2>4. Le questionnaire</h2>
     <p class="sous">Pour chaque ligne : sans objet, léger, marqué ou fort. L'argumentaire apparaît dès qu'une ligne est retenue.</p>
     <div class="grid2" style="margin-bottom:12px">
       <div><label class="f" for="filtre">Filtrer les facteurs</label><input type="text" id="filtre" placeholder="énergie, terrain, bail…"></div>
@@ -215,7 +243,10 @@ const FACTEURS = {"maison": {"plus": [{"l": "Terrain de grande taille si rare da
 </script>
 <script>
 /* ---------- état ---------- */
-const S = { type:'maison', sel:{}, pre:{}, coords:null, ville:'' };
+const S = { type:'maison', sel:{}, pre:{}, coords:null, ville:'', loyer:null, invTouche:false };
+/* Les loyers publiés par la carte des loyers sont charges comprises ; on revient
+   au loyer hors charges par un abattement forfaitaire unique, tous biens confondus. */
+const ABATTEMENT_CHARGES = 0.10;
 const euro = n => (isFinite(n)?Math.round(n):0).toLocaleString('fr-FR')+' €';
 const pct = n => (n>0?'+':'')+(n*100).toFixed(1).replace('.',',')+' %';
 const key = (g,i)=>S.type+'|'+g+'|'+i;
@@ -227,7 +258,8 @@ const BASES = [
   {id:'dvf', nom:'Ventes enregistrées (DVF)'},
   {id:'dpe', nom:'Diagnostics énergétiques (ADEME)'},
   {id:'ris', nom:'Risques (Géorisques)'},
-  {id:'poi', nom:'Commerces et transports'}
+  {id:'poi', nom:'Commerces et transports'},
+  {id:'loy', nom:"Loyers d'annonce (carte des loyers)"}
 ];
 function statut(id, etat, txt){
   const el = document.getElementById('st-'+id);
@@ -516,6 +548,9 @@ async function interroger(){
   /* 6 — Commerces et transports */
   await interrogerPoi();
 
+  /* 7 — Loyers d'annonce */
+  if(!(await interrogerLoyer())) echecs++;
+
   finirEchec(echecs);
   const c = document.getElementById('carnet');
   if((S.notes||[]).length){
@@ -524,6 +559,20 @@ async function interroger(){
   }
   construire(); rendre();
 }
+async function interrogerLoyer(){
+  statut('loy','','interrogation…');
+  if(!S.codeInsee){ statut('loy','ko','code commune inconnu'); S.loyer=null; return false; }
+  try{
+    const d = await jget('/api/sources?type=loyer&insee='+encodeURIComponent(S.codeInsee)+'&bien='+S.type, 25000);
+    if(d.erreur || !d.loyer){ statut('loy','ko', d.erreur||'commune absente du fichier'); S.loyer=null; return false; }
+    S.loyer = d; S.invTouche = false;
+    const hc = d.loyer*(1-ABATTEMENT_CHARGES);
+    statut('loy','ok', hc.toFixed(2).replace('.',',')+" €/m²/mois hors charges — millésime "+d.millesime+(d.estime?' (estimation par regroupement)':''));
+    noter("Loyer d'annonce "+d.millesime+' : '+d.loyer.toFixed(2).replace('.',',')+" €/m²/mois charges comprises, soit "+hc.toFixed(2).replace('.',',')+" €/m²/mois hors charges après abattement forfaitaire de 10 %.");
+    return true;
+  }catch(e){ statut('loy','ko', e.detail||e.code||'échec'); S.loyer=null; return false; }
+}
+
 function finirEchec(n){
   const b = document.getElementById('bandeau');
   if(n>0){
@@ -673,15 +722,57 @@ function rendre(){
   j.style.left = e>=0 ? '50%' : (50-w)+'%';
   j.className = e>=0?'':'n';
 
+  rendreInvest(surf, ref, principal);
+
   if(!retenus.length){ document.getElementById('args').textContent = 'Aucun facteur retenu pour l\'instant.'; return; }
   retenus.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));
   const t = 'ARGUMENTAIRE DE NÉGOCIATION\n'
     + document.getElementById('adr').value + '\n'
     + 'Valeur de référence : '+euro(ref)+'  ('+pm2.toLocaleString('fr-FR')+' €/m² × '+surf+' m²)\n'
     + 'Valeur retenue : '+euro(principal)+'   (écart '+euro(principal-ref)+', soit '+pct(e)+')\n\n'
+    + (S.inv ? 'POSTURE INVESTISSEUR\n'
+        + 'Taux de rendement du marché sur la commune : '+S.inv.marche.toFixed(1).replace('.',',')+' %\n'
+        + 'Loyer de marché retenu : '+S.inv.hc.toFixed(2).replace('.',',')+" €/m²/mois hors charges (loyers d'annonce "+S.loyer.millesime+', abattement de 10 % pour charges)\n'
+        + 'Rendement attendu : '+S.inv.taux.toFixed(1).replace('.',',')+' % — prix correspondant : '+euro(S.inv.prix)+'   (écart '+euro(S.inv.ecart)+')\n\n' : '')
     + retenus.map(r=>'• '+r.l+'  ['+r.n+' — '+pct(r.v)+(r.poids<1?(' ; barème '+pct(r.brut)+' pondéré à '+Math.round(r.poids*100)+' %'):'')+']\n   '+r.a+'\n   Source : '+r.s).join('\n\n')
     + ((S.notes||[]).length ? '\n\nCONSTATATIONS DES BASES PUBLIQUES\n• '+S.notes.join('\n• ') : '');
   document.getElementById('args').textContent = t;
+}
+
+/* ---------- posture investisseur ----------
+   Le rendement brut rapporte le loyer annuel hors charges au prix. La surface
+   se simplifie dans le taux de marché, qui ne dépend donc que du loyer au m²
+   et du prix médian au m². */
+function rendreInvest(surf, ref, principal){
+  const el = i => document.getElementById(i);
+  const sl = el('invTaux'), L = S.loyer;
+  let marche = null, hc = 0;
+  if(L && L.loyer && surf>0 && ref>0){
+    hc = L.loyer*(1-ABATTEMENT_CHARGES);
+    marche = (hc*surf*12)/ref*100;
+  }
+  if(marche!==null){
+    el('invMarche').textContent = marche.toFixed(1).replace('.',',')+' %';
+    el('invMarcheD').textContent = (L.commune?L.commune+' — ':'')+"loyer d'annonce "+L.millesime
+      +' ('+(S.type==='maison'?'maison':'appartement')+') : '+L.loyer.toFixed(2).replace('.',',')
+      +" €/m²/mois charges comprises, abattement de 10 % appliqué."
+      +(L.estime?" Estimation par regroupement géographique : peu d'annonces sur la commune.":'');
+    if(!S.invTouche) sl.value = Math.min(18, Math.max(2, Math.round(marche*2)/2));
+  } else {
+    el('invMarche').textContent = '—';
+    el('invMarcheD').textContent = S.codeInsee
+      ? "Loyers indisponibles pour cette commune, ou pas encore interrogés."
+      : "Loyers non interrogés : lancer l'interrogation des bases publiques.";
+  }
+  const t = +sl.value;
+  el('invTauxL').textContent = t.toFixed(1).replace('.',',')+' %';
+  if(marche===null){ ['invLoyer','invAnnuel','invPrix','invEcart'].forEach(i=>el(i).textContent='—'); S.inv=null; return; }
+  const annuel = hc*surf*12, prix = annuel/(t/100), ec = prix-principal;
+  el('invLoyer').textContent = hc.toFixed(2).replace('.',',')+' €/m²/mois';
+  el('invAnnuel').textContent = euro(annuel);
+  el('invPrix').textContent = euro(prix);
+  el('invEcart').textContent = euro(ec)+(principal?' ('+pct(ec/principal)+')':'');
+  S.inv = {marche:marche, taux:t, hc:hc, annuel:annuel, prix:prix, ecart:ec};
 }
 
 /* ---------- persistance locale ---------- */
@@ -718,13 +809,15 @@ function majType(t){
   document.getElementById('tMaison').classList.toggle('on', t==='maison');
   document.getElementById('tAppart').classList.toggle('on', t==='appartement');
   sauver(); construire(); rendre();
+  /* maison et appartement ne relèvent pas du même fichier de loyers */
+  if(S.codeInsee && S.loyer) interrogerLoyer().then(rendre);
 }
 document.getElementById('tMaison').onclick = ()=>majType('maison');
 document.getElementById('tAppart').onclick = ()=>majType('appartement');
 document.getElementById('go').onclick = interroger;
 document.getElementById('raz').onclick = ()=>{
   if(!confirm('Effacer la saisie en cours et repartir d\'un dossier vierge ?')) return;
-  S.sel={}; S.pre={}; S.notes=[]; S.coords=null; S.codeInsee=''; S.parcelle='';
+  S.sel={}; S.pre={}; S.notes=[]; S.coords=null; S.codeInsee=''; S.parcelle=''; S.loyer=null; S.invTouche=false;
   document.getElementById('adr').value='';
   document.getElementById('dvfInfo').textContent='';
   document.getElementById('carnet').style.display='none';
@@ -733,6 +826,8 @@ document.getElementById('raz').onclick = ()=>{
   initStatuts(); sauver(); construire(); rendre();
 };
 ['pm2','surf','meth','intens'].forEach(id=>document.getElementById(id).addEventListener('input', rendre));
+document.getElementById('invTaux').addEventListener('input', ()=>{ S.invTouche = true; rendre(); });
+document.getElementById('invReset').onclick = ()=>{ S.invTouche = false; rendre(); };
 document.getElementById('etat').addEventListener('change', appliquerEtat);
 ['filtre','vue'].forEach(id=>document.getElementById(id).addEventListener('input', construire));
 document.getElementById('copier').onclick = async ()=>{
