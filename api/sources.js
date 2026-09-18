@@ -48,11 +48,9 @@ function mediane(a) {
    en essaie plusieurs et l'on renonce proprement si aucune ne répond. */
 
 const COUCHES_IRIS = [
-  'STATISTICALUNITS.IRIS:iris',
-  'CONTOURS-IRIS:contours_iris',
+  'STATISTICALUNITS.IRISGE:iris_ge',
   'STATISTICALUNITS.IRIS:contours_iris',
-  'IRIS-GE:iris_ge',
-  'STATISTICALUNITS.IRIS_GE:iris_ge'
+  'STATISTICALUNITS.IRIS.PE:contours_iris_pe'
 ];
 const cacheIris = new Map();   /* "lat,lon" arrondi -> contour ; survit aux appels à chaud */
 let couchesIris = null;        /* noms réellement publiés, découverts au catalogue */
@@ -94,6 +92,22 @@ function pointDansAnneau(lat, lon, anneau) {
     if (coupe) dedans = !dedans;
   }
   return dedans;
+}
+/* Certaines couches renvoient la géométrie en longitude puis latitude, d'autres
+   l'inverse. Plutôt que de trancher, on éprouve les deux lectures et l'on retient
+   celle qui place effectivement le point dans un contour. */
+function entiteContenant(lat, lon, features) {
+  for (const f of features || []) {
+    if (pointDansGeometrie(lat, lon, f.geometry)) return { f, inverse: false };
+  }
+  for (const f of features || []) {
+    if (pointDansGeometrie(lon, lat, f.geometry)) return { f, inverse: true };
+  }
+  return null;
+}
+function inverserGeometrie(geom) {
+  const inv = a => a.map(x => Array.isArray(x[0]) ? inv(x) : [x[1], x[0]]);
+  return { type: geom.type, coordinates: inv(geom.coordinates) };
 }
 function pointDansGeometrie(lat, lon, geom) {
   if (!geom) return false;
@@ -137,8 +151,10 @@ async function contourIris(lat, lon) {
         if (!rep.ok) { essais.push(couche + ' : HTTP ' + rep.status); continue; }
         const j = await rep.json();
         if (!(j.features || []).length) { essais.push(couche + ' : aucune entité dans la zone'); continue; }
-        const f = (j.features || []).find(x => pointDansGeometrie(+lat, +lon, x.geometry));
-        if (!f) { essais.push(couche + ' : aucun quartier ne contient ce point'); continue; }
+        const trouve = entiteContenant(+lat, +lon, j.features);
+        if (!trouve) { essais.push(couche + ' : aucun quartier ne contient ce point'); continue; }
+        const f = trouve.f;
+        const geometrie = trouve.inverse ? inverserGeometrie(f.geometry) : f.geometry;
         const p = f.properties || {};
         const res = {
           code: p.code_iris || p.CODE_IRIS || p.iris || p.dcomiris || p.INSEE_IRIS || '',
@@ -146,7 +162,7 @@ async function contourIris(lat, lon) {
           commune: p.nom_com || p.NOM_COM || p.libcom || p.LIB_COM || '',
           typologie: p.typ_iris || p.TYP_IRIS || '',
           couche,
-          geometry: f.geometry
+          geometry: geometrie
         };
         cacheIris.set(cle, res);
         return res;
