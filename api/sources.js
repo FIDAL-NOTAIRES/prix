@@ -50,9 +50,38 @@ function mediane(a) {
 const COUCHES_IRIS = [
   'STATISTICALUNITS.IRIS:iris',
   'CONTOURS-IRIS:contours_iris',
-  'STATISTICALUNITS.IRIS:contours_iris'
+  'STATISTICALUNITS.IRIS:contours_iris',
+  'IRIS-GE:iris_ge',
+  'STATISTICALUNITS.IRIS_GE:iris_ge'
 ];
 const cacheIris = new Map();   /* "lat,lon" arrondi -> contour ; survit aux appels à chaud */
+let couchesIris = null;        /* noms réellement publiés, découverts au catalogue */
+
+/* Les intitulés de couches changent au fil des versions de la Géoplateforme.
+   Plutôt que de les inscrire en dur, on interroge le catalogue du service et
+   l'on y relève les couches dont le nom mentionne le découpage IRIS. Le
+   résultat est conservé le temps de vie de l'instance. */
+async function decouvrirCouchesIris() {
+  if (couchesIris) return couchesIris;
+  const u = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetCapabilities';
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 25000);
+    const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' }, signal: ctl.signal });
+    clearTimeout(t);
+    if (!rep.ok) { couchesIris = []; return couchesIris; }
+    const xml = await rep.text();
+    const noms = new Set();
+    const re = /<(?:[a-z]+:)?Name>([^<]+)<\/(?:[a-z]+:)?Name>/gi;
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+      const n = m[1].trim();
+      if (/iris/i.test(n) && n.includes(':')) noms.add(n);
+    }
+    couchesIris = [...noms];
+  } catch (e) { couchesIris = []; }
+  return couchesIris;
+}
 
 function pointDansAnneau(lat, lon, anneau) {
   /* algorithme du lancer de rayon ; les coordonnées sont en [lon, lat] */
@@ -84,32 +113,47 @@ async function contourIris(lat, lon) {
   const cle = (+lat).toFixed(4) + ',' + (+lon).toFixed(4);
   if (cacheIris.has(cle)) return cacheIris.get(cle);
   const d = 0.004;
-  const bbox = [lat - d, lon - d, lat + d, lon + d].join(',') + ',EPSG:4326';
+  /* selon la couche, la boîte englobante s'exprime en latitude puis longitude,
+     ou l'inverse : on présente les deux */
+  const boites = [
+    [lat - d, lon - d, lat + d, lon + d].join(',') + ',EPSG:4326',
+    [lon - d, lat - d, lon + d, lat + d].join(',') + ',EPSG:4326'
+  ];
   const essais = [];
-  for (const couche of COUCHES_IRIS) {
-    const u = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature'
-      + '&outputFormat=application/json&count=30&SRSNAME=EPSG:4326&TYPENAMES=' + encodeURIComponent(couche)
-      + '&BBOX=' + encodeURIComponent(bbox);
-    try {
-      const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
-      if (!rep.ok) { essais.push(couche + ' : HTTP ' + rep.status); continue; }
-      const j = await rep.json();
-      const f = (j.features || []).find(x => pointDansGeometrie(+lat, +lon, x.geometry));
-      if (!f) { essais.push(couche + ' : aucun quartier ne contient ce point'); continue; }
-      const p = f.properties || {};
-      const res = {
-        code: p.code_iris || p.CODE_IRIS || p.iris || p.dcomiris || '',
-        nom: p.nom_iris || p.NOM_IRIS || p.libiris || '',
-        commune: p.nom_com || p.NOM_COM || p.libcom || '',
-        typologie: p.typ_iris || p.TYP_IRIS || '',
-        couche,
-        geometry: f.geometry
-      };
-      cacheIris.set(cle, res);
-      return res;
-    } catch (e) { essais.push(couche + ' : ' + e.message); }
+  const candidates = COUCHES_IRIS.concat(await decouvrirCouchesIris())
+    .filter((v, i, a) => a.indexOf(v) === i);
+  if (!candidates.length) {
+    const echec = { erreur: 'aucune couche de contours IRIS publiée au catalogue' };
+    cacheIris.set(cle, echec);
+    return echec;
   }
-  const echec = { erreur: essais.join(' — ') };
+  for (const couche of candidates) {
+    for (const bbox of boites) {
+      const u = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature'
+        + '&outputFormat=application/json&count=30&SRSNAME=EPSG:4326&TYPENAMES=' + encodeURIComponent(couche)
+        + '&BBOX=' + encodeURIComponent(bbox);
+      try {
+        const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
+        if (!rep.ok) { essais.push(couche + ' : HTTP ' + rep.status); continue; }
+        const j = await rep.json();
+        if (!(j.features || []).length) { essais.push(couche + ' : aucune entité dans la zone'); continue; }
+        const f = (j.features || []).find(x => pointDansGeometrie(+lat, +lon, x.geometry));
+        if (!f) { essais.push(couche + ' : aucun quartier ne contient ce point'); continue; }
+        const p = f.properties || {};
+        const res = {
+          code: p.code_iris || p.CODE_IRIS || p.iris || p.dcomiris || p.INSEE_IRIS || '',
+          nom: p.nom_iris || p.NOM_IRIS || p.libiris || p.LIB_IRIS || '',
+          commune: p.nom_com || p.NOM_COM || p.libcom || p.LIB_COM || '',
+          typologie: p.typ_iris || p.TYP_IRIS || '',
+          couche,
+          geometry: f.geometry
+        };
+        cacheIris.set(cle, res);
+        return res;
+      } catch (e) { essais.push(couche + ' : ' + e.message); }
+    }
+  }
+  const echec = { erreur: essais.slice(0, 6).join(' — ') };
   cacheIris.set(cle, echec);
   return echec;
 }
@@ -207,26 +251,59 @@ async function ventes(insee, annee, lat, lon, rayon, avecIris) {
    Source principale : la BD TOPO de l'IGN, sur la même infrastructure publique que
    le cadastre, qui répond de façon fiable. Secours : les serveurs communautaires
    OpenStreetMap, gratuits mais fréquemment saturés. */
+/* Le dénombrement propre d'un service de diffusion cartographique passe par une
+   requête « hits », qui ne renvoie que le compte. L'ordre des axes de la boîte
+   englobante variant d'une couche à l'autre, on présente les deux et l'on
+   retient le meilleur résultat. */
+async function compteCouche(couche, boites) {
+  let meilleur = null;
+  for (const bbox of boites) {
+    for (const mode of ['&RESULTTYPE=hits', '&count=1']) {
+      const u = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature'
+        + '&outputFormat=application/json&SRSNAME=EPSG:4326&TYPENAMES=' + encodeURIComponent(couche)
+        + '&BBOX=' + encodeURIComponent(bbox) + mode;
+      try {
+        const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
+        if (!rep.ok) continue;
+        const txt = await rep.text();
+        let n = NaN;
+        try {
+          const d = JSON.parse(txt);
+          n = d.numberMatched !== undefined ? +d.numberMatched
+            : (d.totalFeatures !== undefined ? +d.totalFeatures : (d.features || []).length);
+        } catch (_) {
+          /* certaines couches répondent en XML à une requête de dénombrement */
+          const m = txt.match(/numberMatched="(\d+)"/);
+          if (m) n = +m[1];
+        }
+        if (isFinite(n) && (meilleur === null || n > meilleur)) meilleur = n;
+        if (meilleur) return meilleur;
+      } catch (e) { /* on passe à la variante suivante */ }
+    }
+  }
+  return meilleur;
+}
+
 async function viaIgn(lat, lon, rayon) {
   const dLa = rayon / 111000, dLo = rayon / (111000 * Math.cos(lat * Math.PI / 180));
-  const bbox = [lat - dLa, lon - dLo, lat + dLa, lon + dLo].join(',') + ',EPSG:4326';
-  const couches = ['BDTOPO_V3:zone_d_activite_ou_d_interet', 'BDTOPO_V3:equipement_de_transport'];
-  let total = 0, lues = 0, detail = {};
+  const boites = [
+    [lat - dLa, lon - dLo, lat + dLa, lon + dLo].join(',') + ',EPSG:4326',
+    [lon - dLo, lat - dLa, lon + dLo, lat + dLa].join(',') + ',EPSG:4326'
+  ];
+  const couches = [
+    'BDTOPO_V3:zone_d_activite_ou_d_interet',
+    'BDTOPO_V3:equipement_de_transport',
+    'BDTOPO_V3:point_d_interet'
+  ];
+  let total = 0, lues = 0;
+  const detail = {};
   for (const c of couches) {
-    const u = 'https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature'
-      + '&outputFormat=application/json&count=1&SRSNAME=EPSG:4326&TYPENAMES=' + encodeURIComponent(c)
-      + '&BBOX=' + encodeURIComponent(bbox);
-    try {
-      const rep = await fetch(u, { headers: { 'user-agent': 'PRIX-FIDAL-Notaires' } });
-      if (!rep.ok) continue;
-      const d = await rep.json();
-      const n = d.numberMatched !== undefined ? +d.numberMatched
-              : (d.totalFeatures !== undefined ? +d.totalFeatures : (d.features || []).length);
-      if (!isFinite(n)) continue;
-      total += n; lues++; detail[c.split(':')[1]] = n;
-    } catch (e) { /* on passe à la couche suivante */ }
+    const n = await compteCouche(c, boites);
+    if (n === null) continue;
+    total += n; lues++; detail[c.split(':')[1]] = n;
   }
   if (!lues) throw new Error('BD TOPO sans réponse exploitable');
+  if (!total) throw new Error('BD TOPO : aucune entité recensée, comptage écarté');
   return { n: total, source: 'BD TOPO (IGN)', detail };
 }
 
@@ -377,6 +454,11 @@ export default async function handler(req, res) {
       if (!/^20\d\d$/.test(annee)) return res.status(400).json({ erreur: 'année invalide' });
       const d = await ventes(insee, annee, q.lat, q.lon, q.r || 700, q.iris === '1');
       return res.status(200).json(d);
+    }
+    if (type === 'couches') {
+      res.setHeader('Cache-Control', 's-maxage=3600');
+      const trouvees = await decouvrirCouchesIris();
+      return res.status(200).json({ pressenties: COUCHES_IRIS, catalogue: trouvees });
     }
     if (type === 'iris') {
       res.setHeader('Cache-Control', 's-maxage=2592000, stale-while-revalidate=2592000');
