@@ -1,0 +1,9 @@
+{
+  "name": "prix",
+  "private": true,
+  "type": "module",
+  "description": "PRIX — estimation et negociation de la valeur venale (FIDAL Notaires)",
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  }
+}

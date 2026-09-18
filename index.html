@@ -106,12 +106,40 @@ input[type=range]{width:100%;margin:6px 0 2px;accent-color:var(--canard)}
 .rel{position:relative}
 .args{font-size:13px;white-space:pre-wrap;background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:12px;max-height:340px;overflow:auto;margin-top:10px}
 footer{padding:16px 22px;color:var(--doux);font-size:12px;text-align:center}
+
+/* ---- ajouts : réglages, travaux, cascade ---- */
+header .outils{margin-left:auto;display:flex;gap:8px;align-items:center}
+header .outils button{background:transparent;color:var(--cyan);border:1px solid var(--cyan);border-radius:7px;padding:7px 13px;font-size:13px;font-weight:600}
+header .outils button:hover{background:rgba(109,213,220,.14)}
+.voile{position:fixed;inset:0;background:rgba(15,34,56,.6);z-index:60;padding:22px;overflow:auto;display:none}
+.voile.on{display:block}
+.modal{max-width:820px;margin:0 auto;background:var(--carte);border:1px solid var(--trait);border-radius:12px;padding:20px 22px;box-shadow:0 18px 48px rgba(0,0,0,.3)}
+.modal h2{font-family:var(--titre);font-size:20px;margin:0 0 4px;color:var(--canard)}
+.modal .barre{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--trait)}
+.rg{display:grid;grid-template-columns:minmax(0,1fr) 130px 84px;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--trait)}
+.rg:last-child{border-bottom:0}
+.rg .u{font-size:11.5px;color:var(--doux);text-align:right}
+.rg input{text-align:right;font-variant-numeric:tabular-nums}
+.trv{display:grid;grid-template-columns:22px minmax(0,1fr) 120px 110px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--trait)}
+@media(max-width:760px){.trv{grid-template-columns:22px minmax(0,1fr);row-gap:6px}.trv .q,.trv .t{grid-column:2}}
+.trv:last-child{border-bottom:0}
+.trv.act{background:rgba(160,16,64,.06)}
+.trv input[type=checkbox]{width:18px;height:18px;accent-color:var(--carmin)}
+.trv .t{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px;color:var(--carmin)}
+.trv .q input{text-align:right;padding:6px 8px;font-size:14px}
+.casc .ligne span:last-child{font-size:14px}
+.casc .fin{border-bottom:0;border-top:2px solid var(--nuit);margin-top:6px;padding-top:10px}
+.casc .fin span{font-family:var(--titre);font-size:19px;color:var(--carmin)}
+.etatSrv{font-size:11.5px;padding:2px 9px;border-radius:20px;background:var(--manuel);color:var(--manuelT);white-space:nowrap}
+.etatSrv.ok{background:var(--auto);color:var(--autoT)}
+.etatSrv.ko{background:var(--semi);color:var(--semiT)}
 </style>
 </head>
 <body>
 <header>
   <h1>PRIX</h1>
   <span class="st">Estimation de la valeur vénale et argumentaire de négociation — FIDAL Notaires</span>
+  <span class="outils"><button id="ouvrirReglages">Réglages</button></span>
 </header>
 
 <div class="wrap">
@@ -209,6 +237,23 @@ footer{padding:16px 22px;color:var(--doux);font-size:12px;text-align:center}
     <div id="listes"></div>
   </div>
 
+  <div class="carte">
+    <h2>5. Les travaux</h2>
+    <p class="sous">Chiffrage en euros, poste par poste, aux montants de la page de réglages. Cocher un poste, ajuster la quantité : le total se déduit du prix proposé au vendeur.</p>
+    <div id="listeTravaux"></div>
+    <div class="ligne" style="margin-top:10px;border-bottom:0"><span><b>Total des travaux</b></span><span class="neg" id="travTotal">0 €</span></div>
+  </div>
+
+  <div class="carte">
+    <h2>6. L'enveloppe budgétaire</h2>
+    <p class="sous">L'argument opposé au vendeur : à budget d'acquisition constant, tout ce que l'acquéreur devra dépenser en plus se déduit du prix.</p>
+    <div class="grid2" style="margin-bottom:14px">
+      <div><label class="f" for="agence">Frais d'agence (€)</label><input type="number" id="agence" value="0" step="500"></div>
+      <div><label class="f" for="dmtoAff">Régime des droits</label><input type="text" id="dmtoAff" value="" readonly></div>
+    </div>
+    <div class="casc" id="cascade"></div>
+  </div>
+
 </div>
 
 <div>
@@ -226,6 +271,8 @@ footer{padding:16px 22px;color:var(--doux);font-size:12px;text-align:center}
       <div class="ligne"><span>Solde appliqué</span><span id="lSolde">—</span></div>
       <div class="ligne"><span>Écart en euros</span><span id="lEcart">—</span></div>
       <div class="ligne"><span>Autre méthode</span><span id="lAutre">—</span></div>
+      <div class="ligne"><span>Travaux chiffrés</span><span class="neg" id="lTrav">—</span></div>
+      <div class="ligne"><span><b>Prix à proposer au vendeur</b></span><span class="neg" id="lOffre">—</span></div>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px">
       <button class="btn" id="copier">Copier l'argumentaire</button>
@@ -236,6 +283,33 @@ footer{padding:16px 22px;color:var(--doux);font-size:12px;text-align:center}
 </div>
 </div>
 
+<div class="voile" id="voileReglages">
+  <div class="modal">
+    <h2>Réglages <span class="etatSrv" id="srvEtat">—</span></h2>
+    <p class="sous">Ces montants sont conservés sur le serveur du cabinet : ils se retrouvent depuis n'importe quel poste, et servent à tous les outils de la suite.</p>
+
+    <details open>
+      <summary>Barème des travaux<span class="cpt">montants par défaut, modifiables à tout moment</span></summary>
+      <div id="rgTravaux"></div>
+    </details>
+
+    <div style="height:14px"></div>
+
+    <details>
+      <summary>Frais d'acquisition — immobilier ancien<span class="cpt">droits, contribution de sécurité immobilière, débours</span></summary>
+      <div id="rgFrais"></div>
+      <p class="mini" style="margin-top:8px">Les émoluments du notaire sont calculés par tranches réglementaires (3,870 % / 1,596 % / 1,064 % / 0,799 %), majorés de la taxe sur la valeur ajoutée. Seuls les droits de mutation, la contribution de sécurité immobilière et les débours se règlent ici.</p>
+    </details>
+
+    <div class="barre">
+      <button class="btn" id="rgEnregistrer">Enregistrer</button>
+      <button class="btn sec" id="rgFermer">Fermer</button>
+      <button class="btn sec" id="rgDefaut" style="margin-left:auto;color:var(--carmin);border-color:var(--carmin)">Rétablir les valeurs par défaut</button>
+    </div>
+    <div class="mini" id="rgMsg" style="margin-top:10px"></div>
+  </div>
+</div>
+
 <footer>PRIX — phase 1 (valeur de référence DVF) et phase 2 (facteurs d'ajustement). Sources : DVF, cadastre, BDNB, BAN, ADEME, Géorisques. Outil d'aide à la décision, il ne remplace pas l'expertise du rédacteur.</footer>
 
 <script>
@@ -243,13 +317,119 @@ const FACTEURS = {"maison": {"plus": [{"l": "Terrain de grande taille si rare da
 </script>
 <script>
 /* ---------- état ---------- */
-const S = { type:'maison', sel:{}, pre:{}, coords:null, ville:'', loyer:null, invTouche:false };
+const S = { type:'maison', sel:{}, pre:{}, coords:null, ville:'', loyer:null, invTouche:false, trav:{}, reglages:null };
 /* Les loyers publiés par la carte des loyers sont charges comprises ; on revient
    au loyer hors charges par un abattement forfaitaire unique, tous biens confondus. */
 const ABATTEMENT_CHARGES = 0.10;
 const euro = n => (isFinite(n)?Math.round(n):0).toLocaleString('fr-FR')+' €';
 const pct = n => (n>0?'+':'')+(n*100).toFixed(1).replace('.',',')+' %';
 const key = (g,i)=>S.type+'|'+g+'|'+i;
+
+/* ---------- barème des travaux et des frais ----------
+   Montants arrêtés par le rédacteur ; ils sont conservés sur le serveur du
+   cabinet et partagés par les outils de la suite. */
+const TRAVAUX_DEFAUT = [
+  {c:'raf_leger',  l:'Rafraîchissement léger (peintures, revêtements de sol)',   u:'m2hab',  pu:800,   b:'tous'},
+  {c:'raf_signif', l:'Rafraîchissement significatif',                            u:'m2hab',  pu:1100,  b:'tous'},
+  {c:'toit_std',   l:'Toiture — réfection complète, tuiles, charpente saine',    u:'m2toit', pu:200,   b:'maison'},
+  {c:'toit_lourd', l:'Toiture — reprise de charpente ou couverture en ardoise',  u:'m2toit', pu:300,   b:'maison'},
+  {c:'assain',     l:'Assainissement individuel à remplacer',                    u:'forfait',pu:8000,  b:'maison', n:'fourchette constatée de 8 000 à 15 000 €'},
+  {c:'fenetre',    l:'Fenêtre double vitrage posée',                             u:'unite',  pu:1100,  b:'tous'},
+  {c:'baie',       l:'Porte-fenêtre ou baie vitrée',                             u:'unite',  pu:2500,  b:'tous'},
+  {c:'elec',       l:'Électricité — remise aux normes, tableau neuf',            u:'m2hab',  pu:100,   b:'tous'},
+  {c:'chaud',      l:'Chaudière gaz à condensation posée',                       u:'forfait',pu:6000,  b:'tous'},
+  {c:'pac',        l:'Pompe à chaleur air-eau sur réseau existant',              u:'forfait',pu:15000, b:'tous'}
+];
+const UNITES = {m2hab:'€ / m² habitable', m2toit:'€ / m² de couverture', unite:"€ l'unité", forfait:'€ forfait'};
+const FRAIS_DEFAUT = {dmto:5.80665, csi:0.10, debours:1400, tva:20};
+const FRAIS_LIB = {
+  dmto:   {l:"Droits de mutation à titre onéreux", u:'% du prix'},
+  csi:    {l:"Contribution de sécurité immobilière", u:'% du prix'},
+  debours:{l:"Débours et formalités", u:'€ forfait'},
+  tva:    {l:"Taux de taxe sur la valeur ajoutée applicable aux émoluments", u:'%'}
+};
+function reglagesDefaut(){
+  const t = {};
+  TRAVAUX_DEFAUT.forEach(x=>{ t[x.c] = x.pu; });
+  return {travaux:t, frais:Object.assign({}, FRAIS_DEFAUT)};
+}
+function prixUnitaire(c){
+  const d = TRAVAUX_DEFAUT.find(x=>x.c===c);
+  const v = S.reglages && S.reglages.travaux ? S.reglages.travaux[c] : undefined;
+  return (v===undefined || v===null || !isFinite(+v)) ? (d?d.pu:0) : +v;
+}
+function fr(k){
+  const v = S.reglages && S.reglages.frais ? S.reglages.frais[k] : undefined;
+  return (v===undefined || v===null || !isFinite(+v)) ? FRAIS_DEFAUT[k] : +v;
+}
+
+/* ---------- réglages : serveur du cabinet, repli local ---------- */
+function marqueSrv(cl, txt){
+  const e = document.getElementById('srvEtat');
+  if(e){ e.className = 'etatSrv '+cl; e.textContent = txt; }
+}
+async function chargerReglages(){
+  let local = null;
+  try{ local = JSON.parse(localStorage.getItem('prix.reglages')||'null'); }catch(_){}
+  S.reglages = local || reglagesDefaut();
+  try{
+    const r = await fetch('/api/parametres?outil=prix&cle=reglages', {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    if(d && d.valeur){
+      S.reglages = {
+        travaux: Object.assign(reglagesDefaut().travaux, d.valeur.travaux||{}),
+        frais:   Object.assign(Object.assign({}, FRAIS_DEFAUT), d.valeur.frais||{})
+      };
+      try{ localStorage.setItem('prix.reglages', JSON.stringify(S.reglages)); }catch(_){}
+      marqueSrv('ok','serveur du cabinet — dernière mise à jour '+(d.maj?new Date(d.maj).toLocaleDateString('fr-FR'):'inconnue'));
+    } else {
+      marqueSrv('ok','serveur du cabinet — aucun réglage enregistré, valeurs par défaut');
+    }
+  }catch(e){
+    marqueSrv('ko','serveur injoignable — réglages de ce poste uniquement');
+  }
+  construireReglages(); construireTravaux(); rendre();
+}
+async function enregistrerReglages(){
+  lireReglagesSaisis();
+  try{ localStorage.setItem('prix.reglages', JSON.stringify(S.reglages)); }catch(_){}
+  const msg = document.getElementById('rgMsg');
+  msg.textContent = 'Enregistrement en cours…';
+  try{
+    const r = await fetch('/api/parametres?outil=prix&cle=reglages', {
+      method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify(S.reglages)
+    });
+    if(!r.ok){ const t = await r.text(); throw new Error(t||('HTTP '+r.status)); }
+    msg.textContent = 'Réglages enregistrés sur le serveur du cabinet : ils vous suivront sur tous vos postes.';
+    marqueSrv('ok','serveur du cabinet — enregistré à l\u2019instant');
+  }catch(e){
+    msg.textContent = "Le serveur n'a pas répondu (" + (e.message||'') + "). Les montants restent actifs sur ce poste, mais ne seront pas retrouvés ailleurs.";
+    marqueSrv('ko','serveur injoignable — réglages de ce poste uniquement');
+  }
+  construireTravaux(); rendre();
+}
+function lireReglagesSaisis(){
+  TRAVAUX_DEFAUT.forEach(x=>{
+    const el = document.getElementById('rg-t-'+x.c);
+    if(el && el.value!=='' && isFinite(+el.value)) S.reglages.travaux[x.c] = +el.value;
+  });
+  Object.keys(FRAIS_DEFAUT).forEach(k=>{
+    const el = document.getElementById('rg-f-'+k);
+    if(el && el.value!=='' && isFinite(+el.value)) S.reglages.frais[k] = +el.value;
+  });
+}
+function construireReglages(){
+  document.getElementById('rgTravaux').innerHTML = TRAVAUX_DEFAUT.map(x=>
+    '<div class="rg"><div><div>'+x.l+'</div>'
+    + '<div class="mini">'+(x.b==='maison'?'maisons seulement':'maisons et appartements')+(x.n?' — '+x.n:'')+'</div></div>'
+    + '<input type="number" id="rg-t-'+x.c+'" step="10" value="'+prixUnitaire(x.c)+'">'
+    + '<div class="u">'+UNITES[x.u]+'</div></div>').join('');
+  document.getElementById('rgFrais').innerHTML = Object.keys(FRAIS_DEFAUT).map(k=>
+    '<div class="rg"><div>'+FRAIS_LIB[k].l+'</div>'
+    + '<input type="number" id="rg-f-'+k+'" step="0.001" value="'+fr(k)+'">'
+    + '<div class="u">'+FRAIS_LIB[k].u+'</div></div>').join('');
+}
 
 /* ---------- interrogation des bases ---------- */
 const BASES = [
@@ -346,37 +526,6 @@ function deriveAnnuelle(base, minVentes, minParAnnee){
   return {ok:true, taux, borne:(brut!==taux), annees:n, ventes:total, de:pts[0].a, a:pts[n-1].a};
 }
 
-/* lecture du fichier de ventes Etalab (une commune, une année) */
-function lireCsvDvf(txt, annee){
-  const lignes = txt.split('\n');
-  if(!lignes.length) return [];
-  const ent = lignes[0].split(',');
-  const idx = n => ent.indexOf(n);
-  const iVf=idx('valeur_fonciere'), iSb=idx('surface_reelle_bati'), iTl=idx('type_local'),
-        iVo=idx('adresse_nom_voie'), iLa=idx('latitude'), iLo=idx('longitude'), iDt=idx('date_mutation');
-  if(iVf<0||iSb<0||iTl<0) return [];
-  const out=[];
-  for(let k=1;k<lignes.length;k++){
-    const l=lignes[k];
-    if(!l) continue;
-    const c = l.indexOf('"')<0 ? l.split(',') : decoupe(l);
-    const vf=+c[iVf], sb=+c[iSb];
-    if(!vf||!sb) continue;
-    out.push({vf:vf, sb:sb, tl:c[iTl]||'', voie:(iVo>=0?c[iVo]:'')||'',
-              lat:+(iLa>=0?c[iLa]:NaN), lon:+(iLo>=0?c[iLo]:NaN), an:(iDt>=0?c[iDt]:annee)});
-  }
-  return out;
-}
-function decoupe(l){
-  const r=[]; let cur='', q=false;
-  for(let i=0;i<l.length;i++){
-    const ch=l[i];
-    if(ch==='"'){ q=!q; continue; }
-    if(ch===',' && !q){ r.push(cur); cur=''; continue; }
-    cur+=ch;
-  }
-  r.push(cur); return r;
-}
 /* lecture tolérante d'un champ quel que soit le nom exact renvoyé */
 function champ(o, noms){
   for(const n of noms){ if(o[n]!==undefined && o[n]!==null && o[n]!=='') return o[n]; }
@@ -663,7 +812,7 @@ async function interroger(){
     c.textContent = 'CONSTATATIONS DES BASES PUBLIQUES\n\n• '+S.notes.join('\n• ');
     c.style.display='block';
   }
-  construire(); rendre();
+  construire(); construireTravaux(); rendre();
 }
 async function interrogerLoyer(){
   statut('loy','','interrogation…');
@@ -766,6 +915,86 @@ function construire(){
   });
 }
 
+/* ---------- travaux ---------- */
+function postesDuBien(){ return TRAVAUX_DEFAUT.filter(x=>x.b==='tous' || x.b===S.type); }
+function quantiteDefaut(x){
+  const s = +document.getElementById('surf').value||0;
+  if(x.u==='m2hab')  return s||0;
+  if(x.u==='m2toit') return s?Math.round(s*0.8):0;   /* emprise au sol approchée, à corriger */
+  if(x.u==='unite')  return s?Math.max(4, Math.round(s/12)):4;
+  return 1;
+}
+function construireTravaux(){
+  const html = postesDuBien().map(x=>{
+    const e = S.trav[x.c] || {on:false, q:quantiteDefaut(x)};
+    S.trav[x.c] = e;
+    const pu = prixUnitaire(x.c);
+    const tot = e.on ? pu*(x.u==='forfait'?1:(+e.q||0)) : 0;
+    return '<div class="trv '+(e.on?'act':'')+'">'
+      + '<div><input type="checkbox" data-t="'+x.c+'" '+(e.on?'checked':'')+'></div>'
+      + '<div><div>'+x.l+'</div><div class="mini">'+pu.toLocaleString('fr-FR')+' '+UNITES[x.u]+(x.n?' — '+x.n:'')+'</div></div>'
+      + '<div class="q">'+(x.u==='forfait'
+          ? '<div class="mini" style="text-align:right">forfait</div>'
+          : '<input type="number" data-q="'+x.c+'" value="'+(+e.q||0)+'" step="1" '+(e.on?'':'disabled')+'>')+'</div>'
+      + '<div class="t">'+(e.on?('− '+euro(tot)):'—')+'</div>'
+      + '</div>';
+  }).join('');
+  document.getElementById('listeTravaux').innerHTML = html;
+  document.querySelectorAll('#listeTravaux input[type=checkbox]').forEach(el=>el.onchange=()=>{
+    S.trav[el.dataset.t].on = el.checked; sauver(); construireTravaux(); rendre();
+  });
+  document.querySelectorAll('#listeTravaux input[data-q]').forEach(el=>el.oninput=()=>{
+    S.trav[el.dataset.q].q = +el.value||0; sauver(); rendre();
+    const x = TRAVAUX_DEFAUT.find(t=>t.c===el.dataset.q);
+    const l = el.closest('.trv').querySelector('.t');
+    if(l) l.textContent = '− '+euro(prixUnitaire(x.c)*(+el.value||0));
+  });
+}
+function totalTravaux(){
+  let t = 0;
+  postesDuBien().forEach(x=>{
+    const e = S.trav[x.c];
+    if(e && e.on) t += prixUnitaire(x.c)*(x.u==='forfait'?1:(+e.q||0));
+  });
+  return t;
+}
+function detailTravaux(){
+  return postesDuBien().filter(x=>S.trav[x.c] && S.trav[x.c].on).map(x=>{
+    const e = S.trav[x.c], q = (x.u==='forfait'?1:(+e.q||0)), pu = prixUnitaire(x.c);
+    return {l:x.l, q, pu, u:UNITES[x.u], t:pu*q};
+  });
+}
+
+/* ---------- frais d'acquisition — immobilier ancien ----------
+   Émoluments du notaire par tranches réglementaires, majorés de la taxe sur la
+   valeur ajoutée, puis droits de mutation, contribution de sécurité immobilière
+   et débours. */
+function emoluments(prix){
+  const tr = [[6500,0.03870],[17000,0.01596],[60000,0.01064],[Infinity,0.00799]];
+  let bas = 0, e = 0;
+  for(const [haut,t] of tr){
+    const part = Math.max(0, Math.min(prix,haut)-bas);
+    e += part*t; bas = haut;
+    if(prix<=haut) break;
+  }
+  return e;
+}
+function fraisAcquisition(prix){
+  if(!(prix>0)) return 0;
+  return emoluments(prix)*(1+fr('tva')/100) + prix*fr('dmto')/100 + prix*fr('csi')/100 + fr('debours');
+}
+/* résolution : P tel que P + frais(P) + travaux + agence = enveloppe */
+function prixDepuisEnveloppe(E, T, A){
+  let P = Math.max(0, (E-T-A)/1.08);
+  for(let i=0;i<60;i++){
+    const f = P + fraisAcquisition(P) + T + A - E;
+    if(Math.abs(f) < 1) break;
+    P -= f/1.08;
+    if(P<0){ P = 0; break; }
+  }
+  return Math.max(0, P);
+}
+
 /* ---------- calcul ---------- */
 function rendre(){
   const pm2 = +document.getElementById('pm2').value||0;
@@ -829,9 +1058,11 @@ function rendre(){
   j.className = e>=0?'':'n';
 
   rendreInvest(surf, ref, principal);
+  const casc = rendreCascade(principal);
 
-  if(!retenus.length){ document.getElementById('args').textContent = 'Aucun facteur retenu pour l\'instant.'; return; }
+  if(!retenus.length && !casc.travaux){ document.getElementById('args').textContent = 'Aucun facteur retenu pour l\'instant.'; return; }
   retenus.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));
+  const det = detailTravaux();
   const t = 'ARGUMENTAIRE DE NÉGOCIATION\n'
     + document.getElementById('adr').value + '\n'
     + 'Valeur de référence : '+euro(ref)+'  ('+pm2.toLocaleString('fr-FR')+' €/m² × '+surf+' m²)\n'
@@ -840,9 +1071,53 @@ function rendre(){
         + 'Taux de rendement du marché sur la commune : '+S.inv.marche.toFixed(1).replace('.',',')+' %\n'
         + 'Loyer de marché retenu : '+S.inv.hc.toFixed(2).replace('.',',')+" €/m²/mois hors charges (loyers d'annonce "+S.loyer.millesime+', abattement de 10 % pour charges)\n'
         + 'Rendement attendu : '+S.inv.taux.toFixed(1).replace('.',',')+' % — prix correspondant : '+euro(S.inv.prix)+'   (écart '+euro(S.inv.ecart)+')\n\n' : '')
-    + retenus.map(r=>'• '+r.l+'  ['+r.n+' — '+pct(r.v)+(r.poids<1?(' ; barème '+pct(r.brut)+' pondéré à '+Math.round(r.poids*100)+' %'):'')+']\n   '+r.a+'\n   Source : '+r.s).join('\n\n')
+    + (retenus.length ? retenus.map(r=>'• '+r.l+'  ['+r.n+' — '+pct(r.v)+(r.poids<1?(' ; barème '+pct(r.brut)+' pondéré à '+Math.round(r.poids*100)+' %'):'')+']\n   '+r.a+'\n   Source : '+r.s).join('\n\n') : '')
+    + (det.length ? '\n\nTRAVAUX À PRÉVOIR\n'
+        + det.map(d=>'• '+d.l+' — '+(d.q!==1||d.u.indexOf('forfait')<0 ? (d.q.toLocaleString('fr-FR')+' × '+d.pu.toLocaleString('fr-FR')+' '+d.u+' = ') : '')+euro(d.t)).join('\n')
+        + '\n  Total des travaux : '+euro(casc.travaux) : '')
+    + (casc.ok ? '\n\nENVELOPPE BUDGÉTAIRE\n'
+        + 'Prix de marché du bien en bon état : '+euro(principal)+'\n'
+        + "Frais d'acquisition sur ce prix (régime de l'ancien) : "+euro(casc.faMarche)+'\n'
+        + 'Enveloppe budgétaire plafond de l\'acquéreur : '+euro(casc.enveloppe)+'\n'
+        + '  − travaux à réaliser : '+euro(casc.travaux)+'\n'
+        + "  − frais d'agence : "+euro(casc.agence)+'\n'
+        + "  − frais d'acquisition sur l'offre : "+euro(casc.faOffre)+'\n'
+        + 'PRIX À PROPOSER AU VENDEUR : '+euro(casc.offre)
+        + '   (soit '+euro(casc.offre-principal)+' par rapport au prix de marché)' : '')
     + ((S.notes||[]).length ? '\n\nCONSTATATIONS DES BASES PUBLIQUES\n• '+S.notes.join('\n• ') : '');
   document.getElementById('args').textContent = t;
+}
+
+/* ---------- cascade : de la valeur de marché au prix proposé ---------- */
+function rendreCascade(principal){
+  const T = totalTravaux();
+  const A = +document.getElementById('agence').value||0;
+  document.getElementById('travTotal').textContent = T?('− '+euro(T)):'0 €';
+  document.getElementById('dmtoAff').value = "Immobilier ancien — droits de "+String(fr('dmto')).replace('.',',')+" %";
+  const box = document.getElementById('cascade');
+  if(!(principal>0)){
+    box.innerHTML = '<p class="mini">Renseigner la surface et le prix au m² pour dérouler la cascade.</p>';
+    document.getElementById('lTrav').textContent = T?('− '+euro(T)):'—';
+    document.getElementById('lOffre').textContent = '—';
+    return {ok:false, travaux:T, agence:A};
+  }
+  const faMarche = fraisAcquisition(principal);
+  const enveloppe = principal + faMarche;
+  const offre = prixDepuisEnveloppe(enveloppe, T, A);
+  const faOffre = fraisAcquisition(offre);
+  box.innerHTML =
+      '<div class="ligne"><span>Prix de marché du bien en bon état</span><span>'+euro(principal)+'</span></div>'
+    + '<div class="ligne"><span>Frais d\'acquisition sur ce prix</span><span>'+euro(faMarche)+'</span></div>'
+    + '<div class="ligne"><span><b>Enveloppe budgétaire plafond de l\'acquéreur</b></span><span>'+euro(enveloppe)+'</span></div>'
+    + '<div class="ligne"><span>− Travaux à réaliser</span><span class="neg">'+euro(-T)+'</span></div>'
+    + '<div class="ligne"><span>− Frais d\'agence</span><span class="neg">'+euro(-A)+'</span></div>'
+    + '<div class="ligne"><span>− Frais d\'acquisition sur l\'offre</span><span class="neg">'+euro(-faOffre)+'</span></div>'
+    + '<div class="ligne fin"><span>Prix à proposer au vendeur</span><span>'+euro(offre)+'</span></div>'
+    + '<p class="mini" style="margin-top:8px">Écart avec le prix de marché : '+euro(offre-principal)
+      + (principal?(' ('+pct(offre/principal-1)+')'):'')+'. L\'acquéreur ne dépense pas un euro de plus ; il répartit autrement la même enveloppe.</p>';
+  document.getElementById('lTrav').textContent = T?('− '+euro(T)):'—';
+  document.getElementById('lOffre').textContent = euro(offre);
+  return {ok:true, travaux:T, agence:A, faMarche, enveloppe, offre, faOffre};
 }
 
 /* ---------- posture investisseur ----------
@@ -882,11 +1157,19 @@ function rendreInvest(surf, ref, principal){
 }
 
 /* ---------- persistance locale ---------- */
-function sauver(){ try{ localStorage.setItem('prix.etat', JSON.stringify({t:S.type, sel:S.sel, pre:S.pre})); }catch(_){}}
+function sauver(){
+  try{ localStorage.setItem('prix.etat', JSON.stringify({
+    t:S.type, sel:S.sel, pre:S.pre, trav:S.trav,
+    agence:+document.getElementById('agence').value||0
+  })); }catch(_){}
+}
 function charger(){
   try{
     const d = JSON.parse(localStorage.getItem('prix.etat')||'null');
-    if(d){ S.type=d.t||'maison'; S.sel=d.sel||{}; S.pre=d.pre||{}; }
+    if(d){
+      S.type=d.t||'maison'; S.sel=d.sel||{}; S.pre=d.pre||{}; S.trav=d.trav||{};
+      if(d.agence) document.getElementById('agence').value = d.agence;
+    }
   }catch(_){}
 }
 
@@ -914,7 +1197,7 @@ function majType(t){
   S.type=t;
   document.getElementById('tMaison').classList.toggle('on', t==='maison');
   document.getElementById('tAppart').classList.toggle('on', t==='appartement');
-  sauver(); construire(); rendre();
+  sauver(); construire(); construireTravaux(); rendre();
   /* maison et appartement ne relèvent pas du même fichier de loyers */
   if(S.codeInsee && S.loyer) interrogerLoyer().then(rendre);
 }
@@ -923,15 +1206,22 @@ document.getElementById('tAppart').onclick = ()=>majType('appartement');
 document.getElementById('go').onclick = interroger;
 document.getElementById('raz').onclick = ()=>{
   if(!confirm('Effacer la saisie en cours et repartir d\'un dossier vierge ?')) return;
-  S.sel={}; S.pre={}; S.notes=[]; S.coords=null; S.codeInsee=''; S.parcelle=''; S.loyer=null; S.invTouche=false;
+  S.sel={}; S.pre={}; S.notes=[]; S.coords=null; S.codeInsee=''; S.parcelle=''; S.loyer=null; S.invTouche=false; S.trav={};
   document.getElementById('adr').value='';
   document.getElementById('dvfInfo').textContent='';
   document.getElementById('carnet').style.display='none';
   document.getElementById('bandeau').classList.remove('on');
   document.getElementById('etat').value='libre';
-  initStatuts(); sauver(); construire(); rendre();
+  document.getElementById('agence').value=0;
+  initStatuts(); sauver(); construire(); construireTravaux(); rendre();
 };
-['pm2','surf','meth','intens'].forEach(id=>document.getElementById(id).addEventListener('input', rendre));
+['pm2','meth','intens','agence'].forEach(id=>document.getElementById(id).addEventListener('input', rendre));
+document.getElementById('surf').addEventListener('input', ()=>{
+  /* la surface commande les quantités par défaut des postes non encore cochés */
+  postesDuBien().forEach(x=>{ const e=S.trav[x.c]; if(e && !e.on) e.q = quantiteDefaut(x); });
+  construireTravaux(); rendre();
+});
+document.getElementById('agence').addEventListener('input', sauver);
 document.getElementById('invTaux').addEventListener('input', ()=>{ S.invTouche = true; rendre(); });
 document.getElementById('invReset').onclick = ()=>{ S.invTouche = false; rendre(); };
 document.getElementById('etat').addEventListener('change', appliquerEtat);
@@ -944,7 +1234,24 @@ document.getElementById('copier').onclick = async ()=>{
 document.getElementById('imprimer').onclick = ()=>window.print();
 document.addEventListener('click', e=>{ if(!e.target.closest('.rel')) document.getElementById('sugg').style.display='none'; });
 
-charger(); initStatuts(); majType(S.type);
+/* réglages */
+const voile = document.getElementById('voileReglages');
+document.getElementById('ouvrirReglages').onclick = ()=>{
+  construireReglages();
+  document.getElementById('rgMsg').textContent='';
+  voile.classList.add('on');
+};
+document.getElementById('rgFermer').onclick = ()=>voile.classList.remove('on');
+voile.addEventListener('click', e=>{ if(e.target===voile) voile.classList.remove('on'); });
+document.getElementById('rgEnregistrer').onclick = enregistrerReglages;
+document.getElementById('rgDefaut').onclick = ()=>{
+  if(!confirm('Rétablir tous les montants par défaut ? Les valeurs enregistrées sur le serveur seront remplacées au prochain enregistrement.')) return;
+  S.reglages = reglagesDefaut();
+  construireReglages(); construireTravaux(); rendre();
+  document.getElementById('rgMsg').textContent = "Valeurs par défaut rétablies à l'écran : cliquer sur Enregistrer pour les propager au serveur.";
+};
+
+charger(); initStatuts(); majType(S.type); chargerReglages();
 </script>
 </body>
 </html>
