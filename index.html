@@ -304,6 +304,48 @@ function distM(la1,lo1,la2,lo2){
   const a=Math.sin(dLa/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLo/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
+/* médiane et quantile pondérés : chaque vente pèse selon son ancienneté */
+function quantPond(items, q){
+  if(!items.length) return NaN;
+  const s = items.slice().sort((a,b)=>a.v-b.v);
+  const tot = s.reduce((t,x)=>t+x.w, 0);
+  let c = 0;
+  for(const x of s){ c += x.w; if(c >= tot*q) return x.v; }
+  return s[s.length-1].v;
+}
+function medPond(items){ return quantPond(items, 0.5); }
+function medSimple(a){ if(!a.length) return NaN; const s=a.slice().sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; }
+function anneeDe(x){ return +String(x.an||'').slice(0,4) || 0; }
+
+/* Dérive annuelle des prix du secteur, mesurée sur les ventes elles-mêmes.
+   Régression sur le logarithme des médianes annuelles : on n'accepte le résultat
+   que si le volume le permet, sinon on préfère ne rien corriger du tout. */
+function deriveAnnuelle(base, minVentes, minParAnnee){
+  const parAn = new Map();
+  base.forEach(x=>{
+    const a = anneeDe(x); if(!a) return;
+    if(!parAn.has(a)) parAn.set(a, []);
+    parAn.get(a).push(x.vf/x.sb);
+  });
+  const pts = [...parAn.entries()]
+    .filter(([a,v]) => v.length >= minParAnnee)
+    .map(([a,v]) => ({a, m: medSimple(v), n: v.length}))
+    .sort((x,y)=>x.a-y.a);
+  const total = pts.reduce((t,p)=>t+p.n, 0);
+  if(base.length < minVentes || pts.length < 3 || total < minVentes)
+    return {ok:false, motif:'volume insuffisant', annees:pts.length, ventes:total};
+  const n = pts.length;
+  const mx = pts.reduce((t,p)=>t+p.a,0)/n;
+  const my = pts.reduce((t,p)=>t+Math.log(p.m),0)/n;
+  let num=0, den=0;
+  pts.forEach(p=>{ num += (p.a-mx)*(Math.log(p.m)-my); den += (p.a-mx)**2; });
+  if(!den) return {ok:false, motif:'millésimes insuffisants', annees:n, ventes:total};
+  let taux = Math.exp(num/den)-1;
+  const brut = taux;
+  taux = Math.max(-0.12, Math.min(0.12, taux));
+  return {ok:true, taux, borne:(brut!==taux), annees:n, ventes:total, de:pts[0].a, a:pts[n-1].a};
+}
+
 /* lecture du fichier de ventes Etalab (une commune, une année) */
 function lireCsvDvf(txt, annee){
   const lignes = txt.split('\n');
@@ -446,14 +488,31 @@ async function interroger(){
   const sRef = +document.getElementById('surf').value||0;
   try{
     if(!S.codeInsee) throw Object.assign(new Error('x'),{code:'code commune inconnu'});
+
+    /* 3a — La densité de la commune commande le rayon de départ : en tissu dense,
+       au-delà de deux cents mètres on a déjà changé de marché. */
+    let dens=null, pop=null;
+    try{
+      const c = await jget('https://geo.api.gouv.fr/communes/'+S.codeInsee+'?fields=nom,population,surface', 9000);
+      pop = +c.population||0;
+      const ha = +c.surface||0;
+      if(pop && ha) dens = Math.round(pop/(ha/100));
+      if(c.nom && !S.ville) S.ville = c.nom;
+    }catch(_){}
+    const paliers = (dens>=8000) ? [150,300,600]
+                  : (dens>=2500) ? [250,500,900]
+                  :                [700,1500,3000];
+    const rMax = paliers[paliers.length-1];
+    S.densite = dens;
+
     const anneeH = new Date().getFullYear()-1;
+    const anneeRef = new Date().getFullYear();
     const annees = [anneeH, anneeH-1, anneeH-2, anneeH-3, anneeH-4];
     let brut = [], lues = [], erreurs = [], ecartees = 0;
     for(const a of annees){
-      if(brut.length>400) break;
       try{
         const d = await jget('/api/sources?type=dvf&insee='+S.codeInsee+'&annee='+a
-                             +'&lat='+S.coords.lat+'&lon='+S.coords.lon+'&r=700', 30000);
+                             +'&lat='+S.coords.lat+'&lon='+S.coords.lon+'&r='+rMax, 30000);
         if(d.erreur) { erreurs.push(a+' : '+d.erreur); continue; }
         if(d.absent) { erreurs.push(a+' : fichier non publié'); continue; }
         brut = brut.concat(d.ventes||[]);
@@ -464,29 +523,76 @@ async function interroger(){
     }
     if(!lues.length) throw Object.assign(new Error('x'),{detail:'relais indisponible ('+erreurs.join(', ')+')'});
 
+    /* 3b — Sélection : on resserre le rayon tant que le volume le permet. */
     const cible = S.type==='maison'?'Maison':'Appartement';
-    const dansRayon = brut.filter(x=>x.tl===cible);
     const proche = x => !sRef || (x.sb>=sRef*0.6 && x.sb<=sRef*1.6);
-    const restreint = dansRayon.filter(proche);
-    const cibleOk = restreint.length>=5;
-    const retenus = cibleOk?restreint:dansRayon;
-    const jeu = retenus.map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
+    const bati = brut.filter(x=>x.tl===cible && isFinite(x.lat) && x.sb>0 && (x.vf/x.sb)>200 && (x.vf/x.sb)<35000);
+    bati.forEach(x=>{ x.d = distM(S.coords.lat,S.coords.lon,x.lat,x.lon); });
+
+    let rayon=rMax, retenus=[], cibleOk=false;
+    for(const seuil of [8,3]){
+      for(const R of paliers){
+        const restr = bati.filter(x=>x.d<=R).filter(proche);
+        if(restr.length>=seuil){ rayon=R; retenus=restr; cibleOk=true; break; }
+      }
+      if(retenus.length) break;
+    }
+    if(!retenus.length){ rayon=rMax; retenus=bati.filter(x=>x.d<=rMax); cibleOk=false; }
+    const elargi = (rayon!==paliers[0]);
+    const dansRayon = bati.filter(x=>x.d<=rayon);
+
+    /* 3c — Tendance du marché et réévaluation des ventes anciennes. */
+    const der = deriveAnnuelle(bati.filter(x=>x.d<=rMax), 30, 5);
+    const jeu = retenus.map(x=>{
+      const age = Math.max(0, anneeRef - (anneeDe(x)||anneeH));
+      const pm = x.vf/x.sb;
+      return {v: der.ok ? pm*Math.pow(1+der.taux, age) : pm, w: Math.pow(0.85, age)};
+    });
 
     if(jeu.length>=3){
-      const med = jeu[Math.floor(jeu.length/2)];
+      const med = medPond(jeu), q1 = quantPond(jeu,0.25), q3 = quantPond(jeu,0.75);
+      const disp = med ? (q3-q1)/med : 1;
+      const n = jeu.length;
+      const rang = (n>=15 && disp<=0.35) ? 2 : (n>=8 && disp<=0.55) ? 1 : 0;
+      const coul = ['var(--carmin)','var(--orange)','var(--canard)'][rang];
+      const mot  = ['fiabilité faible','fiabilité moyenne','bonne fiabilité'][rang];
+      S.fiab = {n, disp, rang, mot, rayon, med};
+
       document.getElementById('pm2').value = Math.round(med/10)*10;
-      document.getElementById('dvfInfo').textContent =
-        jeu.length+' ventes de '+(S.type==='maison'?'maisons':'appartements')+' dans un rayon de 700 m, années '+lues.slice().sort().join(', ')
-        + (cibleOk?(' et sur une surface voisine ('+Math.round(sRef*0.6)+' à '+Math.round(sRef*1.6)+' m²)'):' (toutes surfaces, faute de comparables de taille voisine)')
-        + ' — médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m², quartiles '
-        + Math.round(jeu[Math.floor(jeu.length*0.25)]).toLocaleString('fr-FR')+' à '
-        + Math.round(jeu[Math.floor(jeu.length*0.75)]).toLocaleString('fr-FR')+' €/m².';
-      statut('dvf','ok', jeu.length+' ventes retenues, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² (fichiers Etalab '+lues.slice().sort().join(', ')+')');
-      noter(jeu.length+' ventes comparables retenues dans un rayon de 700 m, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² (une ligne par mutation ; '+ecartees+' ventes multi-lots écartées comme non interprétables).');
+
+      const phraseTendance = der.ok
+        ? ('Tendance du marché : '+(der.taux>=0?'+':'')+(der.taux*100).toFixed(1)
+           +' % par an entre '+der.de+' et '+der.a+' ('+der.ventes+' ventes constatées)'
+           + (der.borne?', écrêtée à 12 % pour rester défendable':'')
+           + ' — les ventes anciennes sont réévaluées à '+anneeRef+'.')
+        : ('Tendance du marché non mesurée ('+der.motif+', '+der.ventes+' ventes sur '+der.annees
+           +' millésimes exploitables) : les ventes ne sont pas réévaluées.');
+      S.tendance = phraseTendance;
+
+      document.getElementById('dvfInfo').innerHTML =
+        '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+coul+';margin-right:6px"></span>'
+        + '<b>'+mot+'</b> — ' + n + ' vente' + (n>1?'s':'') + ' de ' + (S.type==='maison'?'maisons':'appartements')
+        + ' dans un rayon de ' + rayon + ' m'
+        + (dens ? ' (densité communale '+dens.toLocaleString('fr-FR')+' hab/km², rayon de départ '+paliers[0]+' m'+(elargi?' élargi faute de comparables':'')+')' : '')
+        + ', années ' + lues.slice().sort().join(', ')
+        + (cibleOk?(', surface voisine ('+Math.round(sRef*0.6)+' à '+Math.round(sRef*1.6)+' m²)'):', toutes surfaces faute de comparables de taille voisine')
+        + '.<br>Médiane pondérée par l\'ancienneté : <b>' + Math.round(med).toLocaleString('fr-FR') + ' €/m²</b>'
+        + ', quartiles ' + Math.round(q1).toLocaleString('fr-FR') + ' à ' + Math.round(q3).toLocaleString('fr-FR')
+        + ' €/m² (dispersion ' + Math.round(disp*100) + ' %).<br>' + phraseTendance;
+
+      statut('dvf','ok', n+' ventes retenues dans '+rayon+' m, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² — '+mot+' (fichiers Etalab '+lues.slice().sort().join(', ')+')');
+      noter(n+' ventes comparables retenues dans un rayon de '+rayon+' m'
+            +(dens?' (secteur à '+dens.toLocaleString('fr-FR')+' hab/km²)':'')
+            +', médiane pondérée par l\'ancienneté '+Math.round(med).toLocaleString('fr-FR')+' €/m² ; '
+            +ecartees+' ventes multi-lots écartées comme non interprétables.');
+      noter(phraseTendance);
+      if(rang===0) noter('Réserve de méthode : le nombre de comparables ou leur dispersion ('+Math.round(disp*100)+' %) rend la médiane indicative ; la confronter au dire d\'expert.');
+      if(elargi) noter('Rayon élargi à '+rayon+' m faute de comparables suffisants à '+paliers[0]+' m : les biens retenus peuvent relever d\'un sous-marché voisin.');
       if(erreurs.length) noter('Millésimes non exploités : '+erreurs.join(' ; ')+'.');
-      if(jeu.length<6){ preremplir('rarete', true); noter('Moins de six comparables : ligne « rareté du produit » proposée.'); }
+      if(n<6){ preremplir('rarete', true); noter('Moins de six comparables : ligne « rareté du produit » proposée.'); }
+
       const voie = (q.toLowerCase().replace(/^[0-9a-z]*\s+/,'').split(',')[0]||'').replace(/\s+\d{5}.*$/,'').trim().slice(0,12);
-      const rue = dansRayon.filter(x=>voie && x.voie.toLowerCase().includes(voie)).map(x=>x.vf/x.sb).filter(p=>p>200&&p<35000).sort((a,b)=>a-b);
+      const rue = dansRayon.filter(x=>voie && x.voie.toLowerCase().includes(voie)).map(x=>x.vf/x.sb).sort((a,b)=>a-b);
       if(rue.length>=3){
         const medRue = rue[Math.floor(rue.length/2)], ecart = medRue/med-1;
         noter('Médiane de la voie ('+rue.length+' ventes) : '+Math.round(medRue).toLocaleString('fr-FR')+' €/m², soit '+(ecart>0?'+':'')+(ecart*100).toFixed(0)+' % par rapport au secteur.');
@@ -503,8 +609,8 @@ async function interroger(){
       }
       if(S.type==='maison' && sRef>200){ preremplir('grandeSurface', true); noter('Surface supérieure à 200 m² : ligne de moins-value de très grande surface proposée.'); }
     } else {
-      statut('dvf','ko','fichiers lus ('+lues.slice().sort().join(', ')+') mais moins de trois ventes exploitables dans le rayon');
-      document.getElementById('dvfInfo').textContent = 'Trop peu de ventes comparables : saisir le prix au m² à dire d\'expert.';
+      statut('dvf','ko','fichiers lus ('+lues.slice().sort().join(', ')+') mais moins de trois ventes exploitables, même à '+rMax+' m');
+      document.getElementById('dvfInfo').textContent = 'Trop peu de ventes comparables, y compris après élargissement du rayon à '+rMax+' m : saisir le prix au m² à dire d\'expert.';
     }
   }catch(e){ statut('dvf','ko', e.detail||e.code||'échec'); echecs++; }
 
