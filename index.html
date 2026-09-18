@@ -133,6 +133,16 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
 .etatSrv{font-size:11.5px;padding:2px 9px;border-radius:20px;background:var(--manuel);color:var(--manuelT);white-space:nowrap}
 .etatSrv.ok{background:var(--auto);color:var(--autoT)}
 .etatSrv.ko{background:var(--semi);color:var(--semiT)}
+.depot{border:2px dashed var(--trait);border-radius:10px;padding:22px 16px;text-align:center;color:var(--doux);font-size:13.5px;cursor:pointer;transition:border-color .15s,background .15s}
+.depot:hover,.depot.survol{border-color:var(--canard);background:rgba(51,131,139,.07);color:var(--canard)}
+.depot b{display:block;font-size:15px;color:var(--texte);margin-bottom:3px}
+.vign{display:flex;gap:12px;align-items:flex-start;margin-top:12px}
+.vign img{max-width:170px;max-height:130px;border:1px solid var(--trait);border-radius:8px}
+.champs{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.champs span{font-size:12px;padding:3px 9px;border-radius:20px;background:var(--auto);color:var(--autoT)}
+.champs span.vide{background:var(--manuel);color:var(--manuelT)}
+.ecart{font-family:var(--titre);font-size:17px}
+.mode{display:inline-block;font-size:11px;padding:2px 9px;border-radius:20px;background:var(--cyan);color:var(--nuit);font-weight:600;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -146,7 +156,23 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
 <div>
 
   <div class="carte">
-    <h2>1. Le bien</h2>
+    <h2>1. L'annonce</h2>
+    <p class="sous">Facultatif. Déposer ou coller la capture d'écran de l'annonce : les champs utiles en sont extraits et reportés ci-dessous, où ils restent corrigeables.</p>
+    <div class="depot" id="depot" tabindex="0">
+      <b>Déposer la capture ici</b>
+      la coller avec Ctrl+V, ou cliquer pour choisir un fichier
+    </div>
+    <input type="file" id="fichierAnnonce" accept="image/*" style="display:none">
+    <div id="annonceEtat" class="mini" style="margin-top:10px"></div>
+    <div id="annonceVign"></div>
+    <div class="grid2" style="margin-top:14px">
+      <div><label class="f" for="prixAff">Prix affiché à l'annonce (€)</label><input type="number" id="prixAff" value="0" step="1000"></div>
+      <div><label class="f">Écart avec la valeur retenue</label><div class="ecart" id="ecartAff" style="padding:7px 0">—</div></div>
+    </div>
+  </div>
+
+  <div class="carte">
+    <h2>2. Le bien</h2>
     <p class="sous">Saisir l'adresse puis interroger les bases publiques pour préremplir ce qui peut l'être.</p>
     <div class="typ">
       <button id="tMaison" class="on">Maison individuelle</button>
@@ -175,7 +201,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
   </div>
 
   <div class="carte">
-    <h2>2. La valeur de référence</h2>
+    <h2>3. La valeur de référence</h2>
     <p class="sous">Le prix médian est proposé par les ventes réellement enregistrées (DVF) ; il reste modifiable.</p>
     <div class="grid2">
       <div><label class="f" for="pm2">Prix médian au m² (€)</label><input type="number" id="pm2" value="3000" step="10"></div>
@@ -198,7 +224,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
   </div>
 
   <div class="carte">
-    <h2>3. Posture investisseur</h2>
+    <h2>4. Posture investisseur</h2>
     <p class="sous">Rendement brut : loyer hors charges annuel rapporté au prix. Sert à chiffrer, face au vendeur, l'effort qu'un investisseur exigerait.</p>
     <div class="encadre">
       <div class="mini">Taux de rendement du marché — commune</div>
@@ -222,7 +248,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
   </div>
 
   <div class="carte">
-    <h2>4. Le questionnaire</h2>
+    <h2>5. Le questionnaire</h2>
     <p class="sous">Pour chaque ligne : sans objet, léger, marqué ou fort. L'argumentaire apparaît dès qu'une ligne est retenue.</p>
     <div class="grid2" style="margin-bottom:12px">
       <div><label class="f" for="filtre">Filtrer les facteurs</label><input type="text" id="filtre" placeholder="énergie, terrain, bail…"></div>
@@ -238,14 +264,14 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
   </div>
 
   <div class="carte">
-    <h2>5. Les travaux</h2>
+    <h2>6. Les travaux</h2>
     <p class="sous">Chiffrage en euros, poste par poste, aux montants de la page de réglages. Cocher un poste, ajuster la quantité : le total se déduit du prix proposé au vendeur.</p>
     <div id="listeTravaux"></div>
     <div class="ligne" style="margin-top:10px;border-bottom:0"><span><b>Total des travaux</b></span><span class="neg" id="travTotal">0 €</span></div>
   </div>
 
   <div class="carte">
-    <h2>6. L'enveloppe budgétaire</h2>
+    <h2>7. L'enveloppe budgétaire</h2>
     <p class="sous">L'argument opposé au vendeur : à budget d'acquisition constant, tout ce que l'acquéreur devra dépenser en plus se déduit du prix.</p>
     <div class="grid2" style="margin-bottom:14px">
       <div><label class="f" for="agence">Frais d'agence (€)</label><input type="number" id="agence" value="0" step="500"></div>
@@ -260,6 +286,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
   <div class="carte res">
     <h2>Résultat</h2>
     <div class="mini" id="refTxt"></div>
+    <span class="mode" id="modeRes" style="display:none"></span>
     <p class="big" id="valeur">—</p>
     <p class="four" id="fourchette"></p>
     <div class="jauge"><i id="jaugeI" style="left:50%;width:0"></i></div>
@@ -500,19 +527,10 @@ function anneeDe(x){ return +String(x.an||'').slice(0,4) || 0; }
 /* Dérive annuelle des prix du secteur, mesurée sur les ventes elles-mêmes.
    Régression sur le logarithme des médianes annuelles : on n'accepte le résultat
    que si le volume le permet, sinon on préfère ne rien corriger du tout. */
-function deriveAnnuelle(base, minVentes, minParAnnee){
-  const parAn = new Map();
-  base.forEach(x=>{
-    const a = anneeDe(x); if(!a) return;
-    if(!parAn.has(a)) parAn.set(a, []);
-    parAn.get(a).push(x.vf/x.sb);
-  });
-  const pts = [...parAn.entries()]
-    .filter(([a,v]) => v.length >= minParAnnee)
-    .map(([a,v]) => ({a, m: medSimple(v), n: v.length}))
-    .sort((x,y)=>x.a-y.a);
+function regressionAnnuelle(serie, minVentes, minParAnnee){
+  const pts = serie.filter(p => p.n >= minParAnnee && p.m > 0).sort((x,y)=>x.a-y.a);
   const total = pts.reduce((t,p)=>t+p.n, 0);
-  if(base.length < minVentes || pts.length < 3 || total < minVentes)
+  if(pts.length < 3 || total < minVentes)
     return {ok:false, motif:'volume insuffisant', annees:pts.length, ventes:total};
   const n = pts.length;
   const mx = pts.reduce((t,p)=>t+p.a,0)/n;
@@ -524,6 +542,25 @@ function deriveAnnuelle(base, minVentes, minParAnnee){
   const brut = taux;
   taux = Math.max(-0.12, Math.min(0.12, taux));
   return {ok:true, taux, borne:(brut!==taux), annees:n, ventes:total, de:pts[0].a, a:pts[n-1].a};
+}
+/* mêmes règles, appliquées aux ventes brutes d'un rayon */
+function deriveAnnuelle(base, minVentes, minParAnnee){
+  const parAn = new Map();
+  base.forEach(x=>{
+    const a = anneeDe(x); if(!a) return;
+    if(!parAn.has(a)) parAn.set(a, []);
+    parAn.get(a).push(x.vf/x.sb);
+  });
+  const pts = [...parAn.entries()].map(([a,v]) => ({a, m: medSimple(v), n: v.length}));
+  if(base.length < minVentes) return {ok:false, motif:'volume insuffisant', annees:pts.length, ventes:base.length};
+  return regressionAnnuelle(pts, minVentes, minParAnnee);
+}
+/* phrase de tendance, commune à toutes les mailles */
+function phraseDerive(d, maille, anneeRef){
+  return d.ok
+    ? (maille+' : '+(d.taux>=0?'+':'')+(d.taux*100).toFixed(1)+' % par an entre '+d.de+' et '+d.a
+       +' ('+d.ventes+' ventes constatées'+(d.borne?', évolution écrêtée à 12 % pour rester défendable':'')+')')
+    : (maille+' : tendance non mesurée ('+d.motif+', '+d.ventes+' ventes sur '+d.annees+' millésimes exploitables)');
 }
 
 /* lecture tolérante d'un champ quel que soit le nom exact renvoyé */
@@ -658,22 +695,35 @@ async function interroger(){
     const anneeRef = new Date().getFullYear();
     const annees = [anneeH, anneeH-1, anneeH-2, anneeH-3, anneeH-4];
     let brut = [], lues = [], erreurs = [], ecartees = 0;
+    const ptsCommune = [], ptsIris = [];
+    S.iris = null;
+    const cible = S.type==='maison'?'Maison':'Appartement';
     for(const a of annees){
       try{
         const d = await jget('/api/sources?type=dvf&insee='+S.codeInsee+'&annee='+a
-                             +'&lat='+S.coords.lat+'&lon='+S.coords.lon+'&r='+rMax, 30000);
+                             +'&lat='+S.coords.lat+'&lon='+S.coords.lon+'&r='+rMax+'&iris=1', 40000);
         if(d.erreur) { erreurs.push(a+' : '+d.erreur); continue; }
         if(d.absent) { erreurs.push(a+' : fichier non publié'); continue; }
         brut = brut.concat(d.ventes||[]);
         ecartees += d.ecartees||0;
         lues.push(a);
+        /* médianes annuelles aux deux mailles : le quartier au sens IRIS de
+           l'INSEE, et la commune entière en repli */
+        const c = d.commune && d.commune[cible];
+        if(c && c.n) ptsCommune.push({a:+a, m:c.med, n:c.n});
+        if(d.iris && !d.iris.erreur){
+          if(!S.iris) S.iris = {code:d.iris.code, nom:d.iris.nom, commune:d.iris.commune};
+          const q = d.iris.resume && d.iris.resume[cible];
+          if(q && q.n) ptsIris.push({a:+a, m:q.med, n:q.n});
+        } else if(d.iris && d.iris.erreur && !S.irisEchec){
+          S.irisEchec = d.iris.erreur;
+        }
         statut('dvf','', 'lecture des ventes '+lues.slice().sort().join(', ')+'…');
       }catch(err){ erreurs.push(a+' : '+(err.code||err.message)); }
     }
     if(!lues.length) throw Object.assign(new Error('x'),{detail:'relais indisponible ('+erreurs.join(', ')+')'});
 
     /* 3b — Sélection : on resserre le rayon tant que le volume le permet. */
-    const cible = S.type==='maison'?'Maison':'Appartement';
     const proche = x => !sRef || (x.sb>=sRef*0.6 && x.sb<=sRef*1.6);
     const bati = brut.filter(x=>x.tl===cible && isFinite(x.lat) && x.sb>0 && (x.vf/x.sb)>200 && (x.vf/x.sb)<35000);
     bati.forEach(x=>{ x.d = distM(S.coords.lat,S.coords.lon,x.lat,x.lon); });
@@ -690,8 +740,16 @@ async function interroger(){
     const elargi = (rayon!==paliers[0]);
     const dansRayon = bati.filter(x=>x.d<=rayon);
 
-    /* 3c — Tendance du marché et réévaluation des ventes anciennes. */
-    const der = deriveAnnuelle(bati.filter(x=>x.d<=rMax), 30, 5);
+    /* 3c — Tendance du marché, mesurée aux deux mailles retenues : le quartier
+       au sens IRIS de l'INSEE, plus proche de la réalité du marché, et la
+       commune entière, plus fournie. La réévaluation des ventes anciennes suit
+       la maille la plus fine qui tienne le volume. */
+    const tIris    = regressionAnnuelle(ptsIris, 20, 3);
+    const tCommune = regressionAnnuelle(ptsCommune, 30, 5);
+    const tLocale  = deriveAnnuelle(bati.filter(x=>x.d<=rMax), 30, 5);
+    S.tendIris = tIris; S.tendCommune = tCommune;
+    const der = tIris.ok ? tIris : (tCommune.ok ? tCommune : tLocale);
+    S.derMaille = tIris.ok ? 'quartier' : (tCommune.ok ? 'commune' : 'secteur immédiat');
     const jeu = retenus.map(x=>{
       const age = Math.max(0, anneeRef - (anneeDe(x)||anneeH));
       const pm = x.vf/x.sb;
@@ -709,14 +767,19 @@ async function interroger(){
 
       document.getElementById('pm2').value = Math.round(med/10)*10;
 
-      const phraseTendance = der.ok
-        ? ('Tendance du marché : '+(der.taux>=0?'+':'')+(der.taux*100).toFixed(1)
-           +' % par an entre '+der.de+' et '+der.a+' ('+der.ventes+' ventes constatées)'
-           + (der.borne?', écrêtée à 12 % pour rester défendable':'')
-           + ' — les ventes anciennes sont réévaluées à '+anneeRef+'.')
-        : ('Tendance du marché non mesurée ('+der.motif+', '+der.ventes+' ventes sur '+der.annees
-           +' millésimes exploitables) : les ventes ne sont pas réévaluées.');
+      const nomQuartier = S.iris
+        ? ('Quartier '+(S.iris.nom||S.iris.code||'')+(S.iris.code?' ('+S.iris.code+')':''))
+        : 'Quartier';
+      const lignesTend = [];
+      lignesTend.push(phraseDerive(tIris, nomQuartier, anneeRef)
+        + (!S.iris && S.irisEchec ? ' — contours indisponibles : '+S.irisEchec : ''));
+      lignesTend.push(phraseDerive(tCommune, 'Commune de '+(S.ville||S.codeInsee), anneeRef));
+      lignesTend.push(der.ok
+        ? 'Réévaluation des ventes anciennes à '+anneeRef+' selon la tendance du '+S.derMaille+'.'
+        : "Aucune maille ne réunit le volume nécessaire : les ventes anciennes ne sont pas réévaluées.");
+      const phraseTendance = lignesTend.join(' ');
       S.tendance = phraseTendance;
+      S.tendanceLignes = lignesTend;
 
       document.getElementById('dvfInfo').innerHTML =
         '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+coul+';margin-right:6px"></span>'
@@ -727,14 +790,15 @@ async function interroger(){
         + (cibleOk?(', surface voisine ('+Math.round(sRef*0.6)+' à '+Math.round(sRef*1.6)+' m²)'):', toutes surfaces faute de comparables de taille voisine')
         + '.<br>Médiane pondérée par l\'ancienneté : <b>' + Math.round(med).toLocaleString('fr-FR') + ' €/m²</b>'
         + ', quartiles ' + Math.round(q1).toLocaleString('fr-FR') + ' à ' + Math.round(q3).toLocaleString('fr-FR')
-        + ' €/m² (dispersion ' + Math.round(disp*100) + ' %).<br>' + phraseTendance;
+        + ' €/m² (dispersion ' + Math.round(disp*100) + ' %).'
+        + '<br><b>Tendance du marché</b><br>· ' + lignesTend.join('<br>· ');
 
       statut('dvf','ok', n+' ventes retenues dans '+rayon+' m, médiane '+Math.round(med).toLocaleString('fr-FR')+' €/m² — '+mot+' (fichiers Etalab '+lues.slice().sort().join(', ')+')');
       noter(n+' ventes comparables retenues dans un rayon de '+rayon+' m'
             +(dens?' (secteur à '+dens.toLocaleString('fr-FR')+' hab/km²)':'')
             +', médiane pondérée par l\'ancienneté '+Math.round(med).toLocaleString('fr-FR')+' €/m² ; '
             +ecartees+' ventes multi-lots écartées comme non interprétables.');
-      noter(phraseTendance);
+      lignesTend.forEach(t=>noter(t));
       if(rang===0) noter('Réserve de méthode : le nombre de comparables ou leur dispersion ('+Math.round(disp*100)+' %) rend la médiane indicative ; la confronter au dire d\'expert.');
       if(elargi) noter('Rayon élargi à '+rayon+' m faute de comparables suffisants à '+paliers[0]+' m : les biens retenus peuvent relever d\'un sous-marché voisin.');
       if(erreurs.length) noter('Millésimes non exploités : '+erreurs.join(' ; ')+'.');
@@ -1058,7 +1122,24 @@ function rendre(){
   j.className = e>=0?'':'n';
 
   rendreInvest(surf, ref, principal);
-  const casc = rendreCascade(principal);
+
+  /* La molette de rendement commande le prix affiché : dès qu'elle est
+     déplacée, c'est le prix au rendement attendu qui devient le prix retenu,
+     et toute la cascade s'aligne dessus. Le bouton de retour au taux de
+     marché rend la main à la grille de pondération. */
+  const auRendement = !!(S.invTouche && S.inv && S.inv.prix > 0);
+  const retenu = auRendement ? S.inv.prix : principal;
+  const mode = document.getElementById('modeRes');
+  if(ref){
+    document.getElementById('valeur').textContent = euro(retenu);
+    document.getElementById('fourchette').textContent = auRendement
+      ? ('prix au rendement brut de '+S.inv.taux.toFixed(1).replace('.',',')+' % — de '+euro(retenu*0.95)+' à '+euro(retenu*1.05))
+      : ('fourchette de négociation : '+euro(retenu*0.95)+' à '+euro(retenu*1.05));
+    mode.textContent = auRendement ? 'posture investisseur' : 'grille de pondération';
+    mode.style.display = 'inline-block';
+  } else { mode.style.display = 'none'; }
+  rendreEcartAnnonce(retenu);
+  const casc = rendreCascade(retenu);
 
   if(!retenus.length && !casc.travaux){ document.getElementById('args').textContent = 'Aucun facteur retenu pour l\'instant.'; return; }
   retenus.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));
@@ -1066,7 +1147,10 @@ function rendre(){
   const t = 'ARGUMENTAIRE DE NÉGOCIATION\n'
     + document.getElementById('adr').value + '\n'
     + 'Valeur de référence : '+euro(ref)+'  ('+pm2.toLocaleString('fr-FR')+' €/m² × '+surf+' m²)\n'
-    + 'Valeur retenue : '+euro(principal)+'   (écart '+euro(principal-ref)+', soit '+pct(e)+')\n\n'
+    + 'Valeur retenue : '+euro(retenu)+'   (écart '+euro(retenu-ref)+', soit '+pct(ref?retenu/ref-1:0)+')\n'
+    + (auRendement ? 'Prix commandé par le rendement attendu ; valeur issue de la grille : '+euro(principal)+'\n' : '')
+    + (prixAnnonce()>0 ? "Prix affiché à l'annonce : "+euro(prixAnnonce())+'   (écart '+euro(retenu-prixAnnonce())+')\n' : '')
+    + '\n'
     + (S.inv ? 'POSTURE INVESTISSEUR\n'
         + 'Taux de rendement du marché sur la commune : '+S.inv.marche.toFixed(1).replace('.',',')+' %\n'
         + 'Loyer de marché retenu : '+S.inv.hc.toFixed(2).replace('.',',')+" €/m²/mois hors charges (loyers d'annonce "+S.loyer.millesime+', abattement de 10 % pour charges)\n'
@@ -1076,14 +1160,15 @@ function rendre(){
         + det.map(d=>'• '+d.l+' — '+(d.q!==1||d.u.indexOf('forfait')<0 ? (d.q.toLocaleString('fr-FR')+' × '+d.pu.toLocaleString('fr-FR')+' '+d.u+' = ') : '')+euro(d.t)).join('\n')
         + '\n  Total des travaux : '+euro(casc.travaux) : '')
     + (casc.ok ? '\n\nENVELOPPE BUDGÉTAIRE\n'
-        + 'Prix de marché du bien en bon état : '+euro(principal)+'\n'
+        + 'Prix de marché du bien en bon état : '+euro(retenu)+'\n'
         + "Frais d'acquisition sur ce prix (régime de l'ancien) : "+euro(casc.faMarche)+'\n'
         + 'Enveloppe budgétaire plafond de l\'acquéreur : '+euro(casc.enveloppe)+'\n'
         + '  − travaux à réaliser : '+euro(casc.travaux)+'\n'
         + "  − frais d'agence : "+euro(casc.agence)+'\n'
         + "  − frais d'acquisition sur l'offre : "+euro(casc.faOffre)+'\n'
         + 'PRIX À PROPOSER AU VENDEUR : '+euro(casc.offre)
-        + '   (soit '+euro(casc.offre-principal)+' par rapport au prix de marché)' : '')
+        + '   (soit '+euro(casc.offre-retenu)+' par rapport au prix de marché)' : '')
+    + ((S.tendanceLignes||[]).length ? '\n\nTENDANCE DU MARCHÉ\n• '+S.tendanceLignes.join('\n• ') : '')
     + ((S.notes||[]).length ? '\n\nCONSTATATIONS DES BASES PUBLIQUES\n• '+S.notes.join('\n• ') : '');
   document.getElementById('args').textContent = t;
 }
@@ -1109,9 +1194,9 @@ function rendreCascade(principal){
       '<div class="ligne"><span>Prix de marché du bien en bon état</span><span>'+euro(principal)+'</span></div>'
     + '<div class="ligne"><span>Frais d\'acquisition sur ce prix</span><span>'+euro(faMarche)+'</span></div>'
     + '<div class="ligne"><span><b>Enveloppe budgétaire plafond de l\'acquéreur</b></span><span>'+euro(enveloppe)+'</span></div>'
-    + '<div class="ligne"><span>− Travaux à réaliser</span><span class="neg">'+euro(-T)+'</span></div>'
-    + '<div class="ligne"><span>− Frais d\'agence</span><span class="neg">'+euro(-A)+'</span></div>'
-    + '<div class="ligne"><span>− Frais d\'acquisition sur l\'offre</span><span class="neg">'+euro(-faOffre)+'</span></div>'
+    + '<div class="ligne"><span>− Travaux à réaliser</span><span class="neg">'+euro(T)+'</span></div>'
+    + '<div class="ligne"><span>− Frais d\'agence</span><span class="neg">'+euro(A)+'</span></div>'
+    + '<div class="ligne"><span>− Frais d\'acquisition sur l\'offre</span><span class="neg">'+euro(faOffre)+'</span></div>'
     + '<div class="ligne fin"><span>Prix à proposer au vendeur</span><span>'+euro(offre)+'</span></div>'
     + '<p class="mini" style="margin-top:8px">Écart avec le prix de marché : '+euro(offre-principal)
       + (principal?(' ('+pct(offre/principal-1)+')'):'')+'. L\'acquéreur ne dépense pas un euro de plus ; il répartit autrement la même enveloppe.</p>';
@@ -1156,11 +1241,83 @@ function rendreInvest(surf, ref, principal){
   S.inv = {marche:marche, taux:t, hc:hc, annuel:annuel, prix:prix, ecart:ec};
 }
 
+/* ---------- capture d'annonce ----------
+   L'image part au serveur, qui en extrait les champs : la lecture depuis le
+   navigateur se révèle trop fragile sur des annonces aux polices variables et
+   aux prix en très gros caractères. Les champs reviennent corrigeables. */
+function prixAnnonce(){ return +document.getElementById('prixAff').value||0; }
+function rendreEcartAnnonce(retenu){
+  const el = document.getElementById('ecartAff');
+  const p = prixAnnonce();
+  if(!(p>0) || !(retenu>0)){ el.textContent = '—'; el.className = 'ecart'; return; }
+  const d = retenu - p;
+  el.textContent = euro(d) + ' (' + pct(d/p) + ')';
+  el.className = 'ecart ' + (d<0 ? 'neg' : 'pos');
+}
+async function lireCapture(fichier){
+  const et = document.getElementById('annonceEtat');
+  if(!fichier || !/^image\//.test(fichier.type||'')){ et.textContent = "Le fichier déposé n'est pas une image."; return; }
+  if(fichier.size > 5*1024*1024){ et.textContent = "Capture trop lourde (plus de 5 Mo) : n'en conserver que la partie utile."; return; }
+  et.textContent = 'Lecture de la capture en cours…';
+  document.getElementById('annonceVign').innerHTML = '';
+  let b64;
+  try{
+    b64 = await new Promise((ok,ko)=>{
+      const r = new FileReader();
+      r.onload = ()=>ok(String(r.result).split(',')[1]);
+      r.onerror = ()=>ko(new Error('lecture impossible'));
+      r.readAsDataURL(fichier);
+    });
+  }catch(_){ et.textContent = "La capture n'a pas pu être lue sur ce poste."; return; }
+  try{
+    const r = await fetch('/api/annonce', {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({image:b64, format:fichier.type})
+    });
+    const d = await r.json();
+    if(d.erreur){ et.textContent = d.erreur; return; }
+    appliquerAnnonce(d.champs||{}, b64, fichier.type);
+  }catch(e){ et.textContent = "Le serveur n'a pas répondu : " + (e.message||''); }
+}
+function appliquerAnnonce(c, b64, format){
+  const mis = [];
+  if(c.type && c.type!==S.type) { majType(c.type); mis.push('type : '+c.type); }
+  if(c.surface>0){ document.getElementById('surf').value = Math.round(c.surface*10)/10; mis.push('surface : '+c.surface+' m²'); }
+  if(c.prix>0){ document.getElementById('prixAff').value = c.prix; mis.push('prix affiché : '+euro(c.prix)); }
+  const bout = [c.adresse, c.codePostal, c.ville].filter(Boolean).join(' ');
+  if(bout){ document.getElementById('adr').value = bout; S.coords=null; S.codeInsee=''; mis.push('adresse : '+bout); }
+  if(c.pieces)   mis.push(c.pieces+' pièces');
+  if(c.chambres) mis.push(c.chambres+' chambres');
+  if(c.etage!==null && c.etage!==undefined) mis.push('étage '+c.etage);
+  if(c.terrain)  mis.push('terrain '+c.terrain+' m²');
+  if(c.charges)  mis.push('charges '+euro(c.charges)+' par mois');
+  if(c.enLigne)  mis.push('en ligne depuis '+c.enLigne);
+  if(c.agence)   mis.push(c.agence);
+  if(c.honoraires) mis.push("honoraires à charge de l'"+(c.honoraires==='acquereur'?'acquéreur':'')+(c.honoraires==='vendeur'?'du vendeur':''));
+  if(c.dpe){
+    mis.push('DPE '+c.dpe);
+    preremplir('dpeBon', ['A','B'].includes(c.dpe));
+    preremplir('dpeMauvais', ['F','G'].includes(c.dpe));
+    noter("Étiquette énergétique annoncée : "+c.dpe+(c.ges?' (climat '+c.ges+')':'')+".");
+  }
+  S.annonce = c;
+  document.getElementById('annonceVign').innerHTML =
+      '<div class="vign"><img alt="capture de l\'annonce" src="data:'+format+';base64,'+b64+'">'
+    + '<div class="champs">'+(mis.length
+        ? mis.map(x=>'<span>'+x+'</span>').join('')
+        : '<span class="vide">aucun champ exploitable relevé</span>')+'</div></div>';
+  document.getElementById('annonceEtat').textContent = mis.length
+    ? "Champs reportés ci-dessous : les vérifier, puis lancer l'interrogation des bases publiques."
+    : "La capture a été lue, mais aucun champ exploitable n'en ressort.";
+  sauver(); construire(); construireTravaux(); rendre();
+}
+
 /* ---------- persistance locale ---------- */
 function sauver(){
   try{ localStorage.setItem('prix.etat', JSON.stringify({
     t:S.type, sel:S.sel, pre:S.pre, trav:S.trav,
-    agence:+document.getElementById('agence').value||0
+    agence:+document.getElementById('agence').value||0,
+    prixAff:+document.getElementById('prixAff').value||0
   })); }catch(_){}
 }
 function charger(){
@@ -1169,6 +1326,7 @@ function charger(){
     if(d){
       S.type=d.t||'maison'; S.sel=d.sel||{}; S.pre=d.pre||{}; S.trav=d.trav||{};
       if(d.agence) document.getElementById('agence').value = d.agence;
+      if(d.prixAff) document.getElementById('prixAff').value = d.prixAff;
     }
   }catch(_){}
 }
@@ -1207,7 +1365,12 @@ document.getElementById('go').onclick = interroger;
 document.getElementById('raz').onclick = ()=>{
   if(!confirm('Effacer la saisie en cours et repartir d\'un dossier vierge ?')) return;
   S.sel={}; S.pre={}; S.notes=[]; S.coords=null; S.codeInsee=''; S.parcelle=''; S.loyer=null; S.invTouche=false; S.trav={};
+  S.annonce=null; S.iris=null; S.irisEchec=null; S.tendanceLignes=[];
   document.getElementById('adr').value='';
+  document.getElementById('prixAff').value=0;
+  document.getElementById('annonceVign').innerHTML='';
+  document.getElementById('annonceEtat').textContent='';
+  document.getElementById('modeRes').style.display='none';
   document.getElementById('dvfInfo').textContent='';
   document.getElementById('carnet').style.display='none';
   document.getElementById('bandeau').classList.remove('on');
@@ -1224,6 +1387,7 @@ document.getElementById('surf').addEventListener('input', ()=>{
 document.getElementById('agence').addEventListener('input', sauver);
 document.getElementById('invTaux').addEventListener('input', ()=>{ S.invTouche = true; rendre(); });
 document.getElementById('invReset').onclick = ()=>{ S.invTouche = false; rendre(); };
+/* le retour au taux de marché rend la main à la grille de pondération */
 document.getElementById('etat').addEventListener('change', appliquerEtat);
 ['filtre','vue'].forEach(id=>document.getElementById(id).addEventListener('input', construire));
 document.getElementById('copier').onclick = async ()=>{
@@ -1233,6 +1397,29 @@ document.getElementById('copier').onclick = async ()=>{
 };
 document.getElementById('imprimer').onclick = ()=>window.print();
 document.addEventListener('click', e=>{ if(!e.target.closest('.rel')) document.getElementById('sugg').style.display='none'; });
+
+/* capture d'annonce : dépôt, collage ou choix de fichier */
+const depot = document.getElementById('depot'), fAnn = document.getElementById('fichierAnnonce');
+depot.onclick = ()=>fAnn.click();
+depot.onkeydown = e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fAnn.click(); } };
+fAnn.onchange = ()=>{ if(fAnn.files && fAnn.files[0]) lireCapture(fAnn.files[0]); fAnn.value=''; };
+['dragenter','dragover'].forEach(n=>depot.addEventListener(n, e=>{ e.preventDefault(); depot.classList.add('survol'); }));
+['dragleave','drop'].forEach(n=>depot.addEventListener(n, e=>{ e.preventDefault(); depot.classList.remove('survol'); }));
+depot.addEventListener('drop', e=>{
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) lireCapture(f);
+});
+document.addEventListener('paste', e=>{
+  if(voile.classList.contains('on')) return;
+  const it = (e.clipboardData && e.clipboardData.items) || [];
+  for(const x of it){
+    if(x.type && x.type.startsWith('image/')){
+      const f = x.getAsFile();
+      if(f){ e.preventDefault(); lireCapture(f); return; }
+    }
+  }
+});
+document.getElementById('prixAff').addEventListener('input', ()=>{ sauver(); rendre(); });
 
 /* réglages */
 const voile = document.getElementById('voileReglages');
