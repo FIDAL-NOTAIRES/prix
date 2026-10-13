@@ -137,7 +137,11 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
 .depot:hover,.depot.survol{border-color:var(--canard);background:rgba(51,131,139,.07);color:var(--canard)}
 .depot b{display:block;font-size:15px;color:var(--texte);margin-bottom:3px}
 .vign{display:flex;gap:12px;align-items:flex-start;margin-top:12px}
-.vign img{max-width:170px;max-height:130px;border:1px solid var(--trait);border-radius:8px}
+.vign img{max-width:320px;max-height:420px;border:1px solid var(--trait);border-radius:8px;cursor:zoom-in}
+.vign img.grand{max-width:100%;max-height:none;cursor:zoom-out}
+.vign .lus{flex:1;min-width:0}
+.vign .lus .grid2{gap:8px}
+.vign .lus input,.vign .lus select{padding:7px 9px;font-size:14px}
 .champs{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
 .champs span{font-size:12px;padding:3px 9px;border-radius:20px;background:var(--auto);color:var(--autoT)}
 .champs span.vide{background:var(--manuel);color:var(--manuelT)}
@@ -145,6 +149,17 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
 .boutonsAnnonce{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 .boutonsAnnonce button{flex:1;min-width:170px}
 @media(max-width:620px){.depot{padding:16px 12px}.vign{flex-direction:column}.vign img{max-width:100%}}
+.res .big{cursor:pointer}
+.res .big.ouvrable::after{content:" ▸";font-size:16px;color:var(--orange);vertical-align:middle}
+.res .big.ouvrable.ouvert::after{content:" ▾"}
+.detailCalc{background:var(--fond);border:1px solid var(--trait);border-radius:8px;padding:8px 12px;margin:0 0 14px;font-size:13px}
+.detailCalc .etape{display:grid;grid-template-columns:minmax(0,1fr) 62px 100px;gap:8px;padding:5px 0;border-bottom:1px dashed var(--trait);align-items:baseline}
+.detailCalc .etape:last-child{border-bottom:0}
+.detailCalc .etape span:nth-child(2),.detailCalc .etape span:nth-child(3){text-align:right;font-variant-numeric:tabular-nums}
+.detailCalc .etape span:nth-child(3){font-weight:600}
+.detailCalc .etape.tete span,.detailCalc .etape.fin span{font-weight:600}
+.detailCalc .etape.fin{border-top:2px solid var(--nuit);border-bottom:0;margin-top:4px;padding-top:7px}
+.detailCalc .etape.fin span:nth-child(3){color:var(--canard)}
 .mode{display:inline-block;font-size:11px;padding:2px 9px;border-radius:20px;background:var(--cyan);color:var(--nuit);font-weight:600;margin-bottom:4px}
 </style>
 </head>
@@ -174,7 +189,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
     <div id="annonceEtat" class="mini" style="margin-top:10px"></div>
     <div id="annonceVign"></div>
     <div class="grid2" style="margin-top:14px">
-      <div><label class="f" for="prixAff">Prix affiché à l'annonce (€)</label><input type="number" id="prixAff" value="0" step="1000"></div>
+      <div><label class="f" for="prixAff">Prix affiché à l'annonce (€)</label><input type="number" id="prixAff" value="" placeholder="facultatif" step="1000"></div>
       <div><label class="f">Écart avec la valeur retenue</label><div class="ecart" id="ecartAff" style="padding:7px 0">—</div></div>
     </div>
   </div>
@@ -192,7 +207,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
       <div id="sugg" class="sugg" style="display:none"></div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
-      <div><label class="f" for="surf">Surface pondérée (m²)</label><input type="number" id="surf" value="100" step="1"></div>
+      <div><label class="f" for="surf">Surface pondérée (m²)</label><input type="number" id="surf" value="" placeholder="à saisir" step="1"></div>
       <div><label class="f" for="etat">Bien libre ou occupé</label>
         <select id="etat">
           <option value="libre">Libre de toute occupation</option>
@@ -202,7 +217,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
       </div>
     </div>
     <button class="btn" id="go">Interroger les bases publiques</button>
-    <button class="btn sec" id="raz">Nouveau dossier</button>
+    <button class="btn sec" id="raz">Repartir d'un bien vierge</button>
     <div id="statuts" style="margin-top:12px"></div>
     <div class="bandeau" id="bandeau"></div>
     <div class="args" id="carnet" style="display:none"></div>
@@ -212,7 +227,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
     <h2>3. La valeur de référence</h2>
     <p class="sous">Le prix médian est proposé par les ventes réellement enregistrées (DVF) ; il reste modifiable.</p>
     <div class="grid2">
-      <div><label class="f" for="pm2">Prix médian au m² (€)</label><input type="number" id="pm2" value="3000" step="10"></div>
+      <div><label class="f" for="pm2">Prix médian au m² (€)</label><input type="number" id="pm2" value="" placeholder="proposé par les ventes" step="10"></div>
       <div><label class="f" for="meth">Méthode de cumul</label>
         <select id="meth">
           <option value="degr">Dégressive (recommandée)</option>
@@ -282,7 +297,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
     <h2>7. L'enveloppe budgétaire</h2>
     <p class="sous">L'argument opposé au vendeur : à budget d'acquisition constant, tout ce que l'acquéreur devra dépenser en plus se déduit du prix.</p>
     <div class="grid2" style="margin-bottom:14px">
-      <div><label class="f" for="agence">Frais d'agence (€)</label><input type="number" id="agence" value="0" step="500"></div>
+      <div><label class="f" for="agence">Frais d'agence (€)</label><input type="number" id="agence" value="" placeholder="0" step="500"></div>
       <div><label class="f" for="dmtoAff">Régime des droits</label><input type="text" id="dmtoAff" value="" readonly></div>
     </div>
     <div class="casc" id="cascade"></div>
@@ -295,8 +310,9 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
     <h2>Résultat</h2>
     <div class="mini" id="refTxt"></div>
     <span class="mode" id="modeRes" style="display:none"></span>
-    <p class="big" id="valeur">—</p>
+    <p class="big" id="valeur" title="Cliquer pour dérouler le calcul">—</p>
     <p class="four" id="fourchette"></p>
+    <div id="detailCalc" class="detailCalc" style="display:none"></div>
     <div class="jauge"><i id="jaugeI" style="left:50%;width:0"></i></div>
     <div class="mini" style="display:flex;justify-content:space-between"><span>−35 %</span><span>0</span><span>+35 %</span></div>
     <div style="margin-top:14px">
@@ -313,6 +329,7 @@ header .outils button:hover{background:rgba(109,213,220,.14)}
       <button class="btn" id="copier">Copier l'argumentaire</button>
       <button class="btn sec" id="imprimer">Imprimer</button>
     </div>
+    <div style="margin-top:8px"><button class="btn sec" id="razRes" style="width:100%">Repartir d'un bien vierge</button></div>
     <div class="args" id="args">Aucun facteur retenu pour l'instant.</div>
   </div>
 </div>
@@ -1147,6 +1164,7 @@ function rendre(){
     mode.style.display = 'inline-block';
   } else { mode.style.display = 'none'; }
   rendreEcartAnnonce(retenu);
+  rendreDetail({ref, pm2, surf, meth, retenus, principal, brutCourant, netCourant, auRendement, retenu});
   const casc = rendreCascade(retenu);
 
   if(!retenus.length && !casc.travaux){ document.getElementById('args').textContent = 'Aucun facteur retenu pour l\'instant.'; return; }
@@ -1180,6 +1198,39 @@ function rendre(){
     + ((S.notes||[]).length ? '\n\nCONSTATATIONS DES BASES PUBLIQUES\n• '+S.notes.join('\n• ') : '');
   document.getElementById('args').textContent = t;
 }
+
+/* ---------- détail du calcul, sous le prix (08/10/2026) ----------
+   Le prix se déplie au clic : valeur médiane de départ, puis chaque facteur de
+   la grille appliqué l'un après l'autre (du plus lourd au plus léger, avec sa
+   pondération dégressive), jusqu'au prix retenu — pour dérouler le
+   raisonnement devant le client sans quitter l'écran. */
+function rendreDetail(c){
+  const v = document.getElementById('valeur'), box = document.getElementById('detailCalc');
+  v.classList.toggle('ouvrable', c.ref>0);
+  v.classList.toggle('ouvert', !!(c.ref>0 && S.detailOuvert));
+  if(!(c.ref>0)){ box.style.display='none'; box.innerHTML=''; return; }
+  const ligne = (cl, a, b, d) => '<div class="etape '+cl+'"><span>'+a+'</span><span>'+b+'</span><span>'+d+'</span></div>';
+  let h = ligne('tete', 'Médiane du secteur : '+c.surf.toLocaleString('fr-FR')+' m² × '+c.pm2.toLocaleString('fr-FR')+' €/m²', '', euro(c.ref));
+  let courant = c.ref;
+  const ordre = c.retenus.slice().sort((a,b)=>Math.abs(b.v)-Math.abs(a.v));
+  ordre.forEach(r=>{
+    courant = c.meth==='mult' ? courant*(1+r.v) : courant + c.ref*r.v;
+    h += ligne('', r.l+(r.poids<1?' <span class="mini">(pondéré à '+Math.round(r.poids*100)+' %)</span>':''),
+      '<span class="'+(r.v<0?'neg':'pos')+'">'+pct(r.v)+'</span>', euro(courant));
+  });
+  if(!ordre.length) h += ligne('', '<span class="mini">Aucun facteur retenu dans la grille</span>', '', '');
+  if(c.brutCourant!==c.netCourant)
+    h += ligne('', 'Plafonnement du cumul à '+pct(c.netCourant), '', euro(c.principal));
+  if(c.auRendement)
+    h += ligne('', 'Prix commandé par le rendement attendu de '+S.inv.taux.toFixed(1).replace('.',',')+' %', '', euro(c.retenu));
+  h += ligne('fin', 'Prix retenu', '', euro(c.retenu));
+  box.innerHTML = h;
+  box.style.display = S.detailOuvert ? 'block' : 'none';
+}
+document.getElementById('valeur').addEventListener('click', ()=>{
+  if(!document.getElementById('valeur').classList.contains('ouvrable')) return;
+  S.detailOuvert = !S.detailOuvert; rendre();
+});
 
 /* ---------- cascade : de la valeur de marché au prix proposé ---------- */
 function rendreCascade(principal){
@@ -1345,35 +1396,49 @@ function appliquerAnnonce(c, b64, format){
     noter("Étiquette énergétique annoncée : "+c.dpe+(c.ges?' (climat '+c.ges+')':'')+".");
   }
   S.annonce = c;
+  /* 08/10/2026 : l'image et les champs lus CÔTE À CÔTE. Les quatre champs qui
+     entrent dans le calcul (type, prix affiché, surface, adresse) sont
+     corrigeables ici même, et reportés aussitôt dans le formulaire ; les autres
+     renseignements lus restent affichés pour mémoire. */
+  const autres = mis.filter(x=>!/^(type|surface|prix affiché|adresse) :/.test(x));
+  const val = id => (document.getElementById(id).value||'').replace(/"/g,'&quot;');
   document.getElementById('annonceVign').innerHTML =
-      '<div class="vign"><img alt="capture de l\'annonce" src="data:'+format+';base64,'+b64+'">'
-    + '<div class="champs">'+(mis.length
-        ? mis.map(x=>'<span>'+x+'</span>').join('')
-        : '<span class="vide">aucun champ exploitable relevé</span>')+'</div></div>';
+      '<div class="vign"><img id="annImg" alt="capture de l\'annonce" src="data:'+format+';base64,'+b64+'" title="Cliquer pour agrandir">'
+    + '<div class="lus"><div class="mini" style="margin-bottom:6px">Lu sur la capture — à vérifier avant le calcul</div>'
+    + '<div class="grid2">'
+    +   '<div><label class="f" for="annType">Type de bien</label><select id="annType">'
+    +     '<option value="maison"'+(S.type==='maison'?' selected':'')+'>Maison</option>'
+    +     '<option value="appartement"'+(S.type==='appartement'?' selected':'')+'>Appartement</option></select></div>'
+    +   '<div><label class="f" for="annPrix">Prix affiché (€)</label><input type="number" id="annPrix" step="1000" value="'+val('prixAff')+'"></div>'
+    +   '<div><label class="f" for="annSurf">Surface (m²)</label><input type="number" id="annSurf" step="1" value="'+val('surf')+'"></div>'
+    +   '<div><label class="f" for="annAdr">Adresse ou ville</label><input type="text" id="annAdr" value="'+val('adr')+'"></div>'
+    + '</div>'
+    + '<div class="champs">'+(autres.length
+        ? autres.map(x=>'<span>'+x+'</span>').join('')
+        : (mis.length ? '' : '<span class="vide">aucun champ exploitable relevé</span>'))+'</div></div></div>';
+  const lier = (idAnn, idForm, quand) => document.getElementById(idAnn).addEventListener('input', e=>{
+    const f = document.getElementById(idForm); f.value = e.target.value;
+    f.dispatchEvent(new Event('input')); if(quand) quand(e.target.value);
+  });
+  lier('annPrix','prixAff');
+  lier('annSurf','surf');
+  lier('annAdr','adr', ()=>{ S.coords=null; S.codeInsee=''; document.getElementById('sugg').style.display='none'; });
+  document.getElementById('annType').addEventListener('change', e=>majType(e.target.value));
+  document.getElementById('annImg').addEventListener('click', e=>e.target.classList.toggle('grand'));
   document.getElementById('annonceEtat').textContent = mis.length
-    ? "Champs reportés ci-dessous : les vérifier, puis lancer l'interrogation des bases publiques."
+    ? "Vérifier et corriger les champs à côté de la capture, puis lancer l'interrogation des bases publiques."
     : "La capture a été lue, mais aucun champ exploitable n'en ressort.";
   sauver(); construire(); construireTravaux(); rendre();
 }
 
-/* ---------- persistance locale ---------- */
-function sauver(){
-  try{ localStorage.setItem('prix.etat', JSON.stringify({
-    t:S.type, sel:S.sel, pre:S.pre, trav:S.trav,
-    agence:+document.getElementById('agence').value||0,
-    prixAff:+document.getElementById('prixAff').value||0
-  })); }catch(_){}
-}
-function charger(){
-  try{
-    const d = JSON.parse(localStorage.getItem('prix.etat')||'null');
-    if(d){
-      S.type=d.t||'maison'; S.sel=d.sel||{}; S.pre=d.pre||{}; S.trav=d.trav||{};
-      if(d.agence) document.getElementById('agence').value = d.agence;
-      if(d.prixAff) document.getElementById('prixAff').value = d.prixAff;
-    }
-  }catch(_){}
-}
+/* ---------- aucune persistance de l'estimation ----------
+   Arbitrage du 08/10/2026 : PRIX ne garde RIEN d'une estimation à l'autre et
+   repart toujours de zéro à l'ouverture (pas de bouton « reprendre »). Seuls
+   les RÉGLAGES (barèmes de travaux, frais) restent conservés, sur le serveur.
+   sauver() est gardée vide pour ne pas toucher à ses nombreux appels ; la
+   trace laissée par les versions antérieures est effacée au démarrage. */
+function sauver(){}
+function oublierAncienneSaisie(){ try{ localStorage.removeItem('prix.etat'); }catch(_){} }
 
 /* le choix libre / occupé du bloc 1 pilote directement les deux lignes correspondantes */
 function appliquerEtat(){
@@ -1406,12 +1471,23 @@ function majType(t){
 document.getElementById('tMaison').onclick = ()=>majType('maison');
 document.getElementById('tAppart').onclick = ()=>majType('appartement');
 document.getElementById('go').onclick = interroger;
-document.getElementById('raz').onclick = ()=>{
-  if(!confirm('Effacer la saisie en cours et repartir d\'un dossier vierge ?')) return;
+function repartirVierge(){
+  /* 08/10/2026 : vider TOUT, sans recharger la page, pour enchaîner deux
+     estimations pour un même client. Les réglages ne sont pas touchés. */
+  if(!confirm('Effacer la saisie en cours et repartir d\'un bien vierge ?')) return;
   S.sel={}; S.pre={}; S.notes=[]; S.coords=null; S.codeInsee=''; S.parcelle=''; S.loyer=null; S.invTouche=false; S.trav={};
   S.annonce=null; S.iris=null; S.irisEchec=null; S.tendanceLignes=[];
-  document.getElementById('adr').value='';
-  document.getElementById('prixAff').value=0;
+  S.ville=''; S.densite=null; S.fiab=null; S.tendIris=null; S.tendCommune=null; S.tendance=''; S.derMaille=''; S.inv=null;
+  S.detailOuvert=false;
+  ['adr','surf','pm2','prixAff','agence','filtre'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('meth').value='degr';
+  document.getElementById('intens').value='0.75';
+  document.getElementById('vue').value='tout';
+  document.getElementById('invTaux').value=6;
+  document.getElementById('sugg').style.display='none';
+  S.type='maison';
+  document.getElementById('tMaison').classList.add('on');
+  document.getElementById('tAppart').classList.remove('on');
   document.getElementById('annonceVign').innerHTML='';
   document.getElementById('annonceEtat').textContent='';
   document.getElementById('modeRes').style.display='none';
@@ -1419,9 +1495,11 @@ document.getElementById('raz').onclick = ()=>{
   document.getElementById('carnet').style.display='none';
   document.getElementById('bandeau').classList.remove('on');
   document.getElementById('etat').value='libre';
-  document.getElementById('agence').value=0;
-  initStatuts(); sauver(); construire(); construireTravaux(); rendre();
-};
+  initStatuts(); construire(); construireTravaux(); rendre();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+document.getElementById('raz').onclick = repartirVierge;
+document.getElementById('razRes').onclick = repartirVierge;
 ['pm2','meth','intens','agence'].forEach(id=>document.getElementById(id).addEventListener('input', rendre));
 document.getElementById('surf').addEventListener('input', ()=>{
   /* la surface commande les quantités par défaut des postes non encore cochés */
@@ -1486,7 +1564,7 @@ document.getElementById('rgDefaut').onclick = ()=>{
   document.getElementById('rgMsg').textContent = "Valeurs par défaut rétablies à l'écran : cliquer sur Enregistrer pour les propager au serveur.";
 };
 
-charger(); initStatuts(); majType(S.type); chargerReglages();
+oublierAncienneSaisie(); initStatuts(); majType(S.type); chargerReglages();
 </script>
 </body>
 </html>
