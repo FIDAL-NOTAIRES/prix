@@ -62,6 +62,12 @@ button{font-family:var(--corps);cursor:pointer}
 .typ{display:flex;gap:8px;margin-bottom:14px}
 .typ button{flex:1;padding:12px;border:1px solid var(--trait);background:var(--carte);color:var(--doux);border-radius:8px;font-size:15px}
 .typ button.on{background:var(--nuit);color:#fff;border-color:var(--nuit);font-weight:600}
+/* 13/10/2026 : en mode sombre, le bleu nuit du bouton actif se confond avec le
+   fond de la page — le choix retenu passe en bleu canard, comme le bouton principal */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .typ button.on{background:var(--canard);border-color:var(--canard)}
+}
+:root[data-theme="dark"] .typ button.on{background:var(--canard);border-color:var(--canard)}
 .bandeau{background:var(--semi);color:var(--semiT);border:1px solid var(--trait);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:14px;display:none}
 .bandeau.on{display:block}
 .src{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:20px;white-space:nowrap}
